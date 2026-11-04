@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1793803022420,
+      "tag": "0000_mighty_stellaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1793803485225,
+      "tag": "0001_loose_blockbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793803913858,
+      "tag": "0002_maintenance_overrun",
+      "breakpoints": true
+    }
+  ]
+}

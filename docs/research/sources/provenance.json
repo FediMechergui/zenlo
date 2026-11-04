@@ -1,0 +1,41 @@
+{
+  "research_date": "2026-11-04",
+  "date_basis": "User-provided project date",
+  "sources": [
+    {
+      "file": "loi-finances-2026-ministere.pdf",
+      "url": "https://www.finances.gov.tn/sites/default/files/2026-01/115725.pdf",
+      "sha256": "84f96735cc24a3fd90920e83c7fe4de2d0b22c128ada5b48df8a16135f053fc4",
+      "bytes": 5805452,
+      "status": "downloaded_over_verified_https"
+    },
+    {
+      "file": "nc07-2026.pdf",
+      "url": "https://jibaya.tn/wp-content/uploads/2026/03/%D9%85%D8%B0%D9%83%D8%B1%D8%A9-%D8%B9%D8%A7%D9%85%D8%A9-%D8%B9%D8%AF%D8%AF-07.pdf",
+      "sha256": "8c3b2a79eedadeabc98ad9c0574a0cc26ac433551ed17c2b2c12fa5dc32818de",
+      "bytes": 743214,
+      "status": "downloaded_over_verified_https"
+    },
+    {
+      "file": "nc02-2026.pdf",
+      "url": "https://jibaya.tn/wp-content/uploads/2026/01/%D9%85%D8%B0%D9%83%D8%B1%D8%A9-%D8%B9%D8%A7%D9%85%D8%A9-%D8%B9%D8%AF%D8%AF-2-%D9%84%D8%B3%D9%86%D8%A9-2026.pdf",
+      "sha256": "027a6f0e06e7ee856f6138537c245bfaa0eca3d40fb4659b537bdaabba1023fd",
+      "bytes": 338160,
+      "status": "downloaded_over_verified_https"
+    }
+  ],
+  "unretrieved": [
+    {
+      "url": "https://www.transport.tn/uploads/CahierCharges/81.pdf",
+      "reason": "Certificate expiry on direct download; indexed official reference located."
+    },
+    {
+      "url": "https://www.inpdp.tn/Manuel_procedures_INPDP.pdf",
+      "reason": "Direct DNS/network failure; indexed official excerpts read."
+    },
+    {
+      "url": "https://www.tradenet.com.tn/elfatoora.html",
+      "reason": "Direct certificate/network failure; API and schema not verified."
+    }
+  ]
+}
