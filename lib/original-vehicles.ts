@@ -1,0 +1,18 @@
+import type { BodyType,InspectionView } from './inspection';
+
+/** Append-only identity registry. Never reuse an id/revision for different geometry. */
+export const ORIGINAL_VEHICLE_IDS=['renault-clio-v-phase1','peugeot-208-ii-phase1','iveco-daily-2019-van','yamaha-mt07-2021'] as const;
+export type OriginalVehicleId=typeof ORIGINAL_VEHICLE_IDS[number];
+export interface OriginalVehicle {
+ id:OriginalVehicleId;revision:1;make:string;model:string;aliases:string[];bodyType:BodyType;generation:string;variant:string;yearFrom:number;yearTo:number;
+ status:'draft';views:readonly InspectionView[];sources:{title:string;url:string}[];limitations:string;
+}
+const views=['front','rear','left','right','top','cabin','dashboard','cargo'] as const;
+export const ORIGINAL_VEHICLES:readonly OriginalVehicle[]=[
+ {id:'renault-clio-v-phase1',revision:1,make:'Renault',model:'Clio',aliases:['Clio V'],bodyType:'hatchback',generation:'V · phase 1',variant:'5 portes · conduite à gauche · écran vertical',yearFrom:2019,yearTo:2022,status:'draft',views,sources:[{title:'Renault — présentation Clio V, 2019',url:'https://media.renault.com/the-all-new-renault-clio-the-icon-of-a-new-generation-fully-revealed-at-geneva-motor-show/?lang=fra'},{title:'Renault — brochure Clio V',url:'https://www.renault.me/download/katalog/novi-clio.pdf'}],limitations:'Illustration de repérage à vérifier sur le véhicule. Finitions, écrans, roues et équipements peuvent différer ; aucune précision dimensionnelle certifiée.'},
+ {id:'peugeot-208-ii-phase1',revision:1,make:'Peugeot',model:'208',aliases:['208 II'],bodyType:'hatchback',generation:'II · phase 1',variant:'5 portes · thermique · conduite à gauche · écran horizontal',yearFrom:2019,yearTo:2022,status:'draft',views,sources:[{title:'Peugeot — présentation 208, 2019',url:'https://www.media.stellantis.com/em-en/peugeot/press/new-peugeot-208-n-futuristic-young'}],limitations:'Illustration de repérage à vérifier. Les optiques, les arches, le combiné et les écrans dépendent de la finition. Version électrique et restylage exclus.'},
+ {id:'iveco-daily-2019-van',revision:1,make:'Iveco',model:'Daily',aliases:['Daily Fourgon'],bodyType:'van',generation:'Daily · évolution 2019',variant:'Fourgon tôlé H2 · porte coulissante droite · 3 places · conduite à gauche',yearFrom:2019,yearTo:2020,status:'draft',views,sources:[{title:'IVECO — présentation Daily 2019',url:'https://www.iveco.com/global/Press/PressReleases/2019/New-Daily-the-commercial-vehicle-that-will-Change-your-business-perspective'}],limitations:'Ébauche H2 : empattement, porte-à-faux, dimensions et implantation des équipements à contrôler. Ne couvre pas toutes les longueurs, doubles portes latérales ou transformations de caisse.'},
+ {id:'yamaha-mt07-2021',revision:1,make:'Yamaha',model:'MT-07',aliases:['MT07'],bodyType:'motorcycle',generation:'MT-07 · évolution 2021',variant:'Naked · phare central LED · selle biplace · sans bagagerie',yearFrom:2021,yearTo:2022,status:'draft',views,sources:[{title:'Yamaha — fiche MT-07 2021',url:'https://cdn2.yamaha-motor.eu/prod/product-assets/2021/MT07/Factsheets/2021-MT07_en.pdf'}],limitations:'Illustration de repérage à vérifier. La vue chargement représente la zone de selle arrière sans coffre ajouté. Accessoires et modifications non représentés.'},
+];
+export function originalVehicle(id:string,revision:number){return ORIGINAL_VEHICLES.find(v=>v.id===id&&v.revision===revision);}
+export function originalMatches(v:OriginalVehicle,make:string,model:string,bodyType?:BodyType,year?:number){const norm=(s:string)=>s.trim().toLocaleLowerCase();return norm(v.make)===norm(make)&&[v.model,...v.aliases].some(m=>norm(m)===norm(model))&&v.bodyType===bodyType&&(year===undefined||year>=v.yearFrom&&year<=v.yearTo);}

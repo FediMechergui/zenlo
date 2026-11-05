@@ -2,6 +2,12 @@
 
 Cette livraison remplace l'interface initiale par un espace d'exploitation sobre : navigation claire, tableaux homogènes, planning, dossier de location, centre documentaire et formulaires adaptés au mobile. Les actions décrites ci-dessous écrivent dans D1 et, pour les fichiers, dans R2 privé.
 
+## Extension : bibliothèque originale Zenlo
+
+La première collection ajoute **4 modèles et 32 vues vectorielles originales** : Clio V phase 1 (2019–2022), 208 II phase 1 thermique (2019–2022), Daily fourgon H2 (2019–2020) et MT-07 (2021–2022). Sélection dans le schéma du véhicule, recherche et filtre, pièces nommées, contrôle d'identité/année côté serveur, vérification déclarée par l'agence et réutilisation dans ses modèles enregistrés. Les constats, PDF et portail client conservent la révision choisie.
+
+Les dessins sont **des illustrations schématiques à vérifier sur la variante réelle**, pas des plans constructeur exacts ni un catalogue mondial complet. Ils sont écrits en SVG dans Zenlo, sans incorporation de dessins CCVision. `npm run export:drawings` génère les 32 SVG, leur manifeste et une galerie autonome. Voir [la documentation de la bibliothèque](ORIGINAL-VEHICLE-LIBRARY.md) pour l'utilisation, les limites et l'ajout de modèles sans modifier les anciennes révisions.
+
 ## Extension : vues détaillées et références par modèle
 
 Les nouveaux véhicules utilisent huit vues : avant, arrière, gauche, droite, dessus, habitacle/assises, tableau de bord/commandes et coffre/chargement. Les quinze carrosseries disposent de détails de pièces (rétroviseurs, poignées, éclairage, essuie-glaces, roues, commandes, assises et équipements selon la famille). **Agrandir** facilite le placement précis des repères. Les anciens constats conservent leurs quatre vues ; activer les vues détaillées dans la fiche ne les redessine pas.
@@ -10,7 +16,7 @@ Dans **Schéma du modèle → Configurer les références**, importer des images
 
 Les **zones de pièces** permettent de définir jusqu’à 60 zones nommées sur les références. Cliquer une zone préremplit la pièce du constat ; le nom reste modifiable et accessible au clavier. Le constat conserve les pièces, coordonnées et références. Les rapports et le portail client utilisent cette copie historique. Le bouton d’impression attend le chargement des images et signale un échec au lieu de lancer un PDF incomplet.
 
-Les fichiers sont privés et immuables, dédupliqués par entreprise, limités à 5 Mo par vue et 2 000 images par entreprise. Les propriétaires/responsables les importent ; un client ne peut lire que les images présentes dans les constats d’un dossier qui lui est explicitement accordé. Retirer une référence d’une fiche ne supprime pas l’image des anciens rapports. La migration 0008 ajoute leur catalogue. Aucune bibliothèque externe ni clé fournisseur n’est incluse dans cette livraison : les gabarits intégrés restent explicitement génériques.
+Les fichiers sont privés et immuables, dédupliqués par entreprise, limités à 5 Mo par vue et 2 000 images par entreprise. Les propriétaires/responsables les importent ; un client ne peut lire que les images présentes dans les constats d’un dossier qui lui est explicitement accordé. Retirer une référence d’une fiche ne supprime pas l’image des anciens rapports. La migration 0008 ajoute leur catalogue. Aucune bibliothèque externe ni clé fournisseur n’est incluse dans cette livraison. Hors collection originale et références importées, les gabarits restent explicitement génériques.
 
 ### Recherche des illustrations — 5 novembre 2026
 
@@ -37,7 +43,7 @@ Chaque inspection conserve sa géométrie et utilise des libellés de contrôle 
 
 Les familles supplémentaires disposent d'un profil de location propre au véhicule : TVA, timbre, prélèvement, validateur et références d'exploitation. Le prélèvement automobile n'est pas recopié automatiquement. La location réelle exige un profil explicitement vérifié ; la démonstration reste possible. Cette saisie ne certifie pas les permis, l'assurance ou l'autorisation d'exercer, qui restent à contrôler. Un remplacement entre profils fiscaux différents exige un dossier distinct.
 
-Ces personnalisations sont vectorielles : elles ne fournissent ni dessin constructeur exact ni import d'images personnalisées. Les validités assurance/visite et contrôles manuels restent ceux du parcours de location existant.
+Ces personnalisations sont vectorielles et ne fournissent pas de plan constructeur exact. L'import d'images personnalisées est désormais disponible dans l'extension de références décrite plus haut. Les validités assurance/visite et contrôles manuels restent ceux du parcours de location existant.
 
 ## Parcours disponibles
 
@@ -56,7 +62,8 @@ Ces personnalisations sont vectorielles : elles ne fournissent ni dessin constru
 
 ## Vérification
 
-- `npm test` : 134 tests réussis, 0 échec ; migrations réelles dans SQLite, services et routes réels, contrôles de concurrence, droits, pièces, portail, rapports, montants et schémas, dont le rendu serveur accessible des quinze silhouettes en quatre et huit vues, les références et leur isolation.
+- `npm test` : 137 tests réussis, 0 échec ; migrations réelles dans SQLite, services et routes réels, contrôles de concurrence, droits, pièces, portail, rapports, montants et schémas, dont le rendu serveur accessible des quinze silhouettes en quatre et huit vues, les références et leur isolation, les quatre dessins originaux et leurs empreintes immuables.
+- `npm run test:browser:original-library` : cinq parcours couvrant la sélection des quatre modèles, la recherche et la validation, les pièces asymétriques, les révisions historiques dans les PDF et le portail client. Données fictives sur serveur local uniquement ; `ZENLO_BUILT_QA=1` active le contexte du build local.
 - `npm run typecheck` : interfaces, routes et composants TypeScript.
 - `node tests/http.integration.mjs` : parcours de location historique, 14 contrôles HTTP.
 - `node tests/http-v2.integration.mjs` : 11 parcours d'extension, fichiers, multi-entreprise, fournisseurs, documents, vrai export PDF et accès client.

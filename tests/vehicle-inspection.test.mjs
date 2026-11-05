@@ -1,6 +1,14 @@
-import { test } from 'node:test';
+import { test,after } from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectionDataSchema, makeInspectionData, parseInspectionData, inspectionProgress, compareInspectionMarks,DEFAULT_DIAGRAM_PROFILE,diagramProfileSchema,checkLabelsFor } from '../lib/inspection.ts';
+import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,dirname,resolve,basename} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import ts from 'typescript';
+const emitted=mkdtempSync(join(tmpdir(),'zenlo-inspection-unit-'));
+after(()=>{assert.equal(dirname(resolve(emitted)),resolve(tmpdir()));assert.ok(basename(emitted).startsWith('zenlo-inspection-unit-'));rmSync(emitted,{recursive:true,force:true});});
+for(const name of ['original-vehicles','inspection']){const source=readFileSync(new URL(`../lib/${name}.ts`,import.meta.url),'utf8');const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace(/from (['"])([^'"]+)\1/g,(_,q,s)=>`from ${q}${s.startsWith('.')?s+'.mjs':import.meta.resolve(s)}${q}`);writeFileSync(join(emitted,name+'.mjs'),js);}
+const { inspectionDataSchema, makeInspectionData, parseInspectionData, inspectionProgress, compareInspectionMarks,DEFAULT_DIAGRAM_PROFILE,diagramProfileSchema,checkLabelsFor } = await import(pathToFileURL(join(emitted,'inspection.mjs')).href);
 import { LOCAL_MAKES, catalogModels, inferBodyType, mergeMakes, mergeModels } from '../lib/vehicle-catalog.ts';
 
 const mark=(id='mark_one')=>({id,view:'left',x:25,y:50,type:'scratch',severity:'light',note:'Rayure sur la porte',status:'new'});

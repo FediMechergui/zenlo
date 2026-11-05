@@ -7,18 +7,39 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import ts from 'typescript';
+import {createHash} from 'node:crypto';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const emitted=mkdtempSync(join(tmpdir(),'zenlo-diagram-ssr-qa-'));
 after(()=>{assert.equal(dirname(resolve(emitted)),resolve(tmpdir()));assert.ok(basename(emitted).startsWith('zenlo-diagram-ssr-qa-'));rmSync(emitted,{recursive:true,force:true});});
-for(const file of ['lib/inspection.ts','app/components/vehicle-detail.tsx','app/components/vehicle-diagram.tsx']){
+for(const file of ['lib/original-vehicles.ts','app/components/original-vehicle-drawing.tsx','lib/inspection.ts','app/components/vehicle-detail.tsx','app/components/vehicle-diagram.tsx']){
   const output=join(emitted,file.replace(/\.tsx?$/,'.mjs'));mkdirSync(dirname(output),{recursive:true});
   const js=ts.transpileModule(readFileSync(join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-  const resolved=js.replace(/import\s+['"][^'"]+\.css['"];?/g,'').replace(/\bfrom\s+(['"])([^'"]+)\1/g,(_m,q,s)=>{const dest=s.startsWith('@/')?pathToFileURL(join(emitted,s.slice(2)+'.mjs')).href:import.meta.resolve(s);return `from ${q}${dest}${q}`;});
+  const resolved=js.replace(/import\s+['"][^'"]+\.css['"];?/g,'').replace(/\bfrom\s+(['"])([^'"]+)\1/g,(_m,q,s)=>{const dest=s.startsWith('@/')?pathToFileURL(join(emitted,s.slice(2)+'.mjs')).href:s.startsWith('.')?pathToFileURL(resolve(dirname(output),s+'.mjs')).href:import.meta.resolve(s);return `from ${q}${dest}${q}`;});
   writeFileSync(output,resolved);
 }
 const {VehicleDiagram}=await import(pathToFileURL(join(emitted,'app/components/vehicle-diagram.mjs')).href);
 const inspection=await import(pathToFileURL(join(emitted,'lib/inspection.mjs')).href);
+const originals=await import(pathToFileURL(join(emitted,'lib/original-vehicles.mjs')).href);
+const {OriginalVehicleDrawing}=await import(pathToFileURL(join(emitted,'app/components/original-vehicle-drawing.mjs')).href);
+const originalHashes=Object.fromEntries(originals.ORIGINAL_VEHICLES.flatMap(v=>v.views.map(view=>[`${v.id}@${v.revision}/${view}`,createHash('sha256').update(renderToStaticMarkup(createElement(OriginalVehicleDrawing,{id:v.id,revision:v.revision,view}))).digest('hex')])));
+test('published original drawing revisions retain their exact geometry and part labels',()=>{
+ const frozen=JSON.parse(readFileSync(join(root,'tests/fixtures/original-vehicle-v1.sha256.json'),'utf8'));
+ for(const [key,hash] of Object.entries(frozen))assert.equal(originalHashes[key],hash,`${key}: preserve the published revision; add a new revision for changes`);
+});
+
+test('original library has distinct eight-view geometry and supports immutable inspection profiles',()=>{
+ assert.equal(originals.ORIGINAL_VEHICLES.length,4);assert.equal(new Set(Object.values(originalHashes)).size,32);
+ for(const v of originals.ORIGINAL_VEHICLES){
+  const profile={...inspection.DETAILED_DIAGRAM_PROFILE,original:{id:v.id,revision:v.revision,reviewed:false,reviewer:'',evidence:''}};
+  assert.ok(inspection.diagramProfileSchema.safeParse(profile).success);
+  const html=renderToStaticMarkup(createElement(VehicleDiagram,{bodyType:v.bodyType,profile,readOnly:true}));assert.equal((html.match(/data-original=/g)||[]).length,8);assert.ok(!html.includes('Gabarit générique'));assert.ok(html.includes('à vérifier sur le véhicule'));assert.ok(!html.includes('NaN'));assert.ok((html.match(/data-part=/g)||[]).length>40);
+  const old=inspection.makeInspectionData(v.bodyType,null,profile);old.marks=[{id:'mirror',view:'left',x:30,y:40,type:'scratch',severity:'light',status:'new',part:'Rétroviseur gauche',note:''}];const next=inspection.makeInspectionData(v.bodyType,old,inspection.DETAILED_DIAGRAM_PROFILE);assert.deepEqual(next.diagramProfile,profile);assert.equal(next.marks[0].part,'Rétroviseur gauche');
+  assert.equal(originals.originalMatches(v,v.make,v.model,v.bodyType,v.yearFrom),true);assert.equal(originals.originalMatches(v,v.make,v.model,v.bodyType,v.yearTo+1),false);
+  assert.equal(inspection.diagramProfileSchema.safeParse({...profile,original:{...profile.original,reviewed:true}}).success,false);
+  assert.equal(inspection.diagramProfileSchema.safeParse({...profile,original:{...profile.original,revision:2}}).success,false);
+ }
+});
 
 test('detailed diagrams cover all eight views and named interior/exterior parts for every family',()=>{
  for(const bodyType of inspection.BODY_TYPE_VALUES){

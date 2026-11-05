@@ -54,6 +54,15 @@ const params=id=>({params:Promise.resolve({id})});
 const templateRoute=await load('app/api/vehicle-templates/route');
 const diagramUpload=await load('app/api/diagram-assets/route'),diagramGet=await load('app/api/diagram-assets/[id]/route'),diagramService=await load('server/diagram-assets');
 const templateInput={make:'Yamaha',model:'MT-07',bodyType:'motorcycle',diagramProfile:{version:1,label:'QA model',length:90,width:100,height:100,wheelScale:100,roofRack:false}};
+
+test('original library templates validate model identity, revision, year and review evidence',async t=>{
+ const f=await fixture(t),ctx=await dbServices.context(f.owner),input={...templateInput,diagramProfile:{...templateInput.diagramProfile,detailVersion:2,original:{id:'yamaha-mt07-2021',revision:1,reviewed:false,reviewer:'',evidence:''}}};
+ assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',input))).status,200);
+ assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',{...input,model:'MT-09'}))).status,422);
+ await assert.rejects(()=>diagramService.validateDiagramReference(ctx,{...input,year:2024}),e=>e.code==='DIAGRAM_MODEL_MISMATCH');
+ assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',{...input,diagramProfile:{...input.diagramProfile,original:{...input.diagramProfile.original,id:'unknown-model'}}}))).status,422);
+ assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',{...input,diagramProfile:{...input.diagramProfile,original:{...input.diagramProfile.original,reviewed:true}}}))).status,422);
+});
 function insert(db,table,object){const entries=Object.entries(object);db.prepare(`INSERT INTO ${table} (${entries.map(([k])=>k).join(',')}) VALUES (${entries.map(()=>'?').join(',')})`).run(...entries.map(([,v])=>v));}
 function jsonRequest(path,body,extra={}){return new Request(origin+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(body),...extra});}
 function uploadRequest({customerId,expenseId,kind='identity_front',bytes=png,mime='image/png'}={}){const form=new FormData();form.set('kind',kind);if(customerId)form.set('customerId',customerId);if(expenseId)form.set('expenseId',expenseId);form.set('label','Test image only, no personal data');form.set('file',new File([bytes],'qa.png',{type:mime}));return new Request(origin+'/api/files',{method:'POST',headers:{Origin:origin},body:form});}

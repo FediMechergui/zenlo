@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ORIGINAL_VEHICLE_IDS } from './original-vehicles';
 
 export const BODY_TYPE_VALUES = ['hatchback','sedan','suv','van','pickup','coupe','convertible','truck','flatbed','tipper','motorcycle','scooter','minibus','bus','quad'] as const;
 export type BodyType = typeof BODY_TYPE_VALUES[number];
@@ -24,7 +25,7 @@ const referenceSchema=z.object({
   if(r.zones.some(z=>z.x+z.width>100||z.y+z.height>100||!r.sheets.some(s=>s.view===z.view)))c.addIssue({code:'custom',message:'Chaque zone doit rester dans une vue de référence.'});
   if(r.reviewed&&(!r.generation||!r.variant||!r.source||!r.reviewer||r.sheets.length!==8))c.addIssue({code:'custom',message:'Complétez les huit vues, la génération, la variante, la source et le vérificateur.'});
 });
-export const diagramProfileSchema=z.object({version:z.literal(1),label:z.string().trim().max(100),length:z.number().int().min(70).max(110),width:z.number().int().min(65).max(115),height:z.number().int().min(70).max(110),wheelScale:z.number().int().min(75).max(120),roofRack:z.boolean(),detailVersion:z.literal(2).optional(),reference:referenceSchema.optional()}).strict().refine(p=>!p.reference||p.detailVersion===2,'Une référence nécessite les vues détaillées.');
+export const diagramProfileSchema=z.object({version:z.literal(1),label:z.string().trim().max(100),length:z.number().int().min(70).max(110),width:z.number().int().min(65).max(115),height:z.number().int().min(70).max(110),wheelScale:z.number().int().min(75).max(120),roofRack:z.boolean(),detailVersion:z.literal(2).optional(),reference:referenceSchema.optional(),original:z.object({id:z.enum(ORIGINAL_VEHICLE_IDS),revision:z.literal(1),reviewed:z.boolean(),reviewer:z.string().trim().max(180),evidence:z.string().trim().max(1000)}).strict().refine(o=>!o.reviewed||!!o.reviewer&&!!o.evidence,'Précisez le vérificateur et le contrôle effectué.').optional()}).strict().refine(p=>(!p.reference&&!p.original)||p.detailVersion===2,'Une référence nécessite les vues détaillées.').refine(p=>!(p.reference&&p.original),'Choisissez une seule source de dessin.');
 export type DiagramProfile=z.infer<typeof diagramProfileSchema>;
 export const vehicleRentalPolicySchema=z.object({reviewed:z.boolean(),reviewer:z.string().trim().max(180),evidence:z.string().trim().max(2000),taxRateBps:z.number().int().min(0).max(10000),stampMillimes:z.number().int().min(0).max(1000000),dailyLevyRate:z.number().int().min(0).max(1000000),dailyLevyTaxable:z.boolean()}).strict();
 export type VehicleRentalPolicy=z.infer<typeof vehicleRentalPolicySchema>;

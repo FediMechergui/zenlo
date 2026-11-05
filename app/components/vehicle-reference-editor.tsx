@@ -7,7 +7,7 @@ export function VehicleReferenceEditor({make,model,bodyType,profile,onChange}:{m
  const [busy,setBusy]=useState<InspectionView|null>(null),[error,setError]=useState(''),[zoneView,setZoneView]=useState<InspectionView>('left');
  const ref=profile.reference;
  function patch(p:Partial<Reference>){if(ref)onChange({...profile,reference:{...ref,...p,reviewed:false}});}
- function begin(){onChange({...profile,detailVersion:2,reference:{make,model,bodyType,generation:'',variant:'',yearFrom:new Date().getFullYear(),yearTo:new Date().getFullYear(),source:'',reviewer:'',reviewed:false,sheets:[],zones:[]}});}
+ function begin(){const {original,...base}=profile;onChange({...base,detailVersion:2,reference:{make,model,bodyType,generation:'',variant:'',yearFrom:new Date().getFullYear(),yearTo:new Date().getFullYear(),source:'',reviewer:'',reviewed:false,sheets:[],zones:[]}});}
  async function upload(view:InspectionView,file:File){if(!ref)return;setBusy(view);setError('');try{
   if(file.size>5*1024*1024)throw new Error('La vue dépasse 5 Mo.');
   const form=new FormData();form.set('file',file);form.set('label',`${make} ${model} — ${VIEW_LABELS[view]}`);
