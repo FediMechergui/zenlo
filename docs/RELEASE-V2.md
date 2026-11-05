@@ -19,7 +19,7 @@ Cette livraison remplace l'interface initiale par un espace d'exploitation sobre
 
 ## Vérification
 
-- `npm test` : 116 tests réussis, 0 échec ; migrations réelles dans SQLite, services et routes réels, contrôles de concurrence, droits, pièces, portail, rapports, montants et schémas.
+- `npm test` : 118 tests réussis, 0 échec ; migrations réelles dans SQLite, services et routes réels, contrôles de concurrence, droits, pièces, portail, rapports, montants et schémas, dont le rendu serveur accessible des sept carrosseries.
 - `npm run typecheck` : interfaces, routes et composants TypeScript.
 - `node tests/http.integration.mjs` : parcours de location historique, 14 contrôles HTTP.
 - `node tests/http-v2.integration.mjs` : 11 parcours d'extension, fichiers, multi-entreprise, fournisseurs, documents, vrai export PDF et accès client.

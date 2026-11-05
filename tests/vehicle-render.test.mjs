@@ -1,0 +1,37 @@
+import test,{after} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {dirname,resolve,join,basename} from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import ts from 'typescript';
+
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const emitted=mkdtempSync(join(tmpdir(),'zenlo-diagram-ssr-qa-'));
+after(()=>{assert.equal(dirname(resolve(emitted)),resolve(tmpdir()));assert.ok(basename(emitted).startsWith('zenlo-diagram-ssr-qa-'));rmSync(emitted,{recursive:true,force:true});});
+for(const file of ['lib/inspection.ts','app/components/vehicle-diagram.tsx']){
+  const output=join(emitted,file.replace(/\.tsx?$/,'.mjs'));mkdirSync(dirname(output),{recursive:true});
+  const js=ts.transpileModule(readFileSync(join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+  const resolved=js.replace(/import\s+['"][^'"]+\.css['"];?/g,'').replace(/\bfrom\s+(['"])([^'"]+)\1/g,(_m,q,s)=>{const dest=s.startsWith('@/')?pathToFileURL(join(emitted,s.slice(2)+'.mjs')).href:import.meta.resolve(s);return `from ${q}${dest}${q}`;});
+  writeFileSync(output,resolved);
+}
+const {VehicleDiagram}=await import(pathToFileURL(join(emitted,'app/components/vehicle-diagram.mjs')).href);
+
+test('server-rendered vehicle diagrams have scalar accessible titles matching client text',()=>{
+  for(const bodyType of ['hatchback','sedan','suv','van','pickup','coupe','convertible']){
+    const html=renderToStaticMarkup(createElement(VehicleDiagram,{bodyType,readOnly:true}));
+    const titles=[...html.matchAll(/<title[^>]*>(.*?)<\/title>/g)].map(m=>m[1]);
+    assert.deepEqual(titles,['Avant du véhicule','Arrière du véhicule','Côté gauche du véhicule','Côté droit du véhicule']);
+    assert.equal((html.match(/aria-labelledby=/g)||[]).length,4);
+  }
+});
+test('damage and interactive diagram titles survive SSR without missing text or injected markup',()=>{
+  const marks=[{id:'mark_qa',view:'left',x:25,y:50,type:'scratch',severity:'light',status:'new',note:'Porte <avant> & aile'}];
+  const html=renderToStaticMarkup(createElement(VehicleDiagram,{bodyType:'sedan',marks,onAdd(){}}));
+  const titles=[...html.matchAll(/<title[^>]*>(.*?)<\/title>/g)].map(m=>m[1]);
+  assert.equal(titles.length,5);assert.ok(titles.every(Boolean));
+  assert.ok(titles.some(t=>t==='1. Rayure — Porte &lt;avant&gt; &amp; aile'));
+  assert.ok(titles.filter(t=>t.includes('cliquez pour positionner')).length===4);
+});
