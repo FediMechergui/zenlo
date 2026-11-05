@@ -19,6 +19,8 @@
     "test:http:enterprise": "node tests/http-v2.integration.mjs",
     "test:browser:mixed-fleet": "node tests/mixed-fleet.integration.mjs",
     "test:browser:vehicles": "node tests/vehicle-browser.integration.mjs",
+    "test:browser:gaps": "node tests/gaps.integration.mjs",
+    "test:recovery": "python tests/recovery_test.py",
     "export:drawings": "node scripts/export-original-library.mjs",
     "test:browser:original-library": "node tests/original-library.integration.mjs",
     "test:browser:workflows": "node tests/browser-workflows-v2.integration.mjs"

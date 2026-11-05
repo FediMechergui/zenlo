@@ -5,7 +5,7 @@ import { defaultSettings } from './domain';
 import { rentalAccess,rentalAccessGuard } from './client-access';
 export const DOCUMENT_KINDS=['contract','invoice','deposit','quote','delivery','inspection','credit'] as const;
 export type DocumentKind=typeof DOCUMENT_KINDS[number];
-export interface DocumentData {rental:Rental;customer:Customer;vehicle:Vehicle;settings:AgencySettings;inspection?:Inspection;inspections?:Inspection[];vehicles?:Vehicle[];invoice?:Invoice;quote?:Quote;credit?:CreditNote;payments?:Payment[];kilometres?:number;mode?:string;}
+export interface DocumentData {people?:{drivers:Customer[];signatory:Customer;payer:Customer};rental:Rental;customer:Customer;vehicle:Vehicle;settings:AgencySettings;inspection?:Inspection;inspections?:Inspection[];vehicles?:Vehicle[];invoice?:Invoice;quote?:Quote;credit?:CreditNote;payments?:Payment[];kilometres?:number;mode?:string;}
 export interface PrintableDocument {data:DocumentData;hash:string;version:number;createdAt:string;draft:boolean;client:boolean;versions:number[];}
 export async function printableDocument(user:ChatGPTUser,kind:DocumentKind,id:string,version?:number):Promise<PrintableDocument|null>{
   const table=kind==='invoice'?'invoices':kind==='quote'?'quotes':kind==='credit'?'credit_notes':null;
@@ -36,6 +36,7 @@ export async function printableDocument(user:ChatGPTUser,kind:DocumentKind,id:st
       data.vehicles=(await all<Record<string,unknown>>('SELECT v.* FROM vehicles v WHERE v.tenant_id=? AND (v.id=? OR EXISTS(SELECT 1 FROM assignments a WHERE a.tenant_id=v.tenant_id AND a.vehicle_id=v.id AND a.rental_id=?))',t,data.vehicle.id,rentalId)).map(row=>camelRow<Vehicle>(row));
     }
   }
+  const hideIdentity=(c:Customer)=>({...c,identityNumber:'',identityUntil:'',issuingCountry:'',licenseCountry:'',birthDate:'',licenseIssuedAt:'',licenseNumber:'',licenseUntil:'',notes:''});if(access.ctx&&!['owner','manager','agent'].includes(access.ctx.role)){data.customer=hideIdentity(data.customer);if(data.people)data.people={drivers:data.people.drivers.map(hideIdentity),signatory:hideIdentity(data.people.signatory),payer:hideIdentity(data.people.payer)};}
   data.settings={...defaultSettings(data.settings?.name||''),...data.settings};if(!data.rental||!data.customer||!data.vehicle)return null;
   if(access.ctx&&['mechanic','viewer'].includes(access.ctx.role)){data.customer={...data.customer,licenseNumber:'',licenseUntil:'',email:'',phone:'',address:'',taxId:'',notes:''};}
   else if(access.ctx?.role==='accountant'){data.customer={...data.customer,licenseNumber:'',licenseUntil:'',notes:''};}

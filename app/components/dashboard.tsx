@@ -18,7 +18,7 @@ export default function Dashboard(){
  const departures=data.rentals.filter(r=>r.status==='confirmed'&&localDay(r.startAt)===today).sort((a,b)=>a.startAt.localeCompare(b.startAt));
  const returns=active.filter(r=>localDay(r.endAt)<=today).sort((a,b)=>a.endAt.localeCompare(b.endAt));
  const month=today.slice(0,7);
- const collected=data.payments.filter(p=>localDay(p.createdAt).startsWith(month)).reduce((n,p)=>n+(p.kind==='payment'?p.amount:p.kind==='refund'?-p.amount:0),0);
+ const collected=data.payments.filter(p=>localDay(p.createdAt).startsWith(month)).reduce((n,p)=>n+(p.method==='withholding'?0:p.kind==='payment'?p.amount:p.kind==='refund'?-p.amount:0),0);
  const deposits=data.rentals.reduce((n,r)=>n+depositFor(r.id,data.payments),0);
  const outstanding=data.rentals.filter(r=>!['draft','cancelled'].includes(r.status)).reduce((n,r)=>n+Math.max(0,rentalReceivable(r,data.invoices)-paidFor(r.id,data.payments)),0);
  const overdue=active.filter(r=>Date.parse(r.endAt)<now.getTime());

@@ -1,3 +1,4 @@
+import {partySnapshot} from './rental-dossier';
 import { z } from 'zod';
 import type { Rental, Invoice, Customer, Vehicle, Payment, CashSession } from '../lib/types';
 import { type Context,type Mutation,authorize,entity,rows,guard,insert,statement,update,commit,newId,now,first } from './db';
@@ -5,7 +6,10 @@ import { paymentSchema,required,cashSchema } from './validation';
 import { requireCondition,financialBalance,fiscalGate } from './domain';
 
 export async function createPayment(ctx:Context,m:Mutation,body:unknown){
-  authorize(ctx,['owner','manager','agent','accountant']);const data=paymentSchema.parse(body);const tenant=ctx.workspace.id;
+ const p=await preparePayment(ctx,body);return commit(ctx,m,p.sql,{id:p.id},{action:'finance.recorded',type:'payment',id:p.id,detail:p.detail});
+}
+export async function preparePayment(ctx:Context,body:unknown,allowWithholding=false){
+  authorize(ctx,['owner','manager','agent','accountant']);const withheld=allowWithholding&&(body as {method?:string})?.method==='withholding';const parsed=paymentSchema.parse(withheld?{...(body as object),method:'bank'}:body);const data={...parsed,method:withheld?'withholding':parsed.method};const tenant=ctx.workspace.id;
   if(['refund','deposit_returned','deposit_applied'].includes(data.kind))authorize(ctx,['owner','manager','accountant']);
   requireCondition(data.method!=='cheque','CHEQUE_CLEARANCE_REQUIRED','Les chèques en attente ne sont pas des fonds encaissés. Enregistrez le virement de compensation bancaire avec sa référence après confirmation.');
   if(data.method!=='cash')requireCondition(data.reference.length>=3,'PAYMENT_REFERENCE_REQUIRED','Indiquez la référence de confirmation du paiement.');
@@ -22,14 +26,15 @@ export async function createPayment(ctx:Context,m:Mutation,body:unknown){
   const cash=await first<{id:string}>('SELECT id FROM cash_sessions WHERE tenant_id=? AND closed_at IS NULL',tenant);
   if(data.method==='cash'&&data.kind!=='deposit_applied')requireCondition(cash,'CASH_SESSION_REQUIRED','Ouvrez une session de caisse avant un mouvement en espèces.');
   const id=newId('payment');const sql=[insert('payments',{...data,id,tenantId:tenant,invoiceId:invoice?.id||null,cashSessionId:data.method==='cash'&&data.kind!=='deposit_applied'?cash!.id:null,createdAt:now()})];
-  return commit(ctx,m,sql,{id},{action:`finance.${data.kind}`,type:'payment',id,detail:`${rental.number} · ${data.amount} millimes · ${data.method} · ${data.note}`});
+  if(data.kind==='refund'&&!withheld)sql.unshift(...guard("COALESCE((SELECT SUM(CASE WHEN kind IN ('payment','deposit_applied') THEN amount WHEN kind='refund' THEN -amount ELSE 0 END) FROM payments WHERE tenant_id=? AND rental_id=? AND method<>'withholding'),0)>=?",tenant,rental.id,data.amount));
+  return {id,sql,detail:`${rental.number} · ${data.amount} millimes · ${data.method} · ${data.note}`};
 }
 export async function createInvoice(ctx:Context,m:Mutation,body:unknown){
   authorize(ctx,['owner','manager','accountant']);const {rentalId}=z.object({rentalId:required}).strict().parse(body);const t=ctx.workspace.id;
   const rental=await entity<Rental>('rentals',t,rentalId);requireCondition(rental.status==='returned','RENTAL_NOT_RETURNED','La facture finale est préparée après le retour du véhicule. Les paiements anticipés restent inscrits au dossier.');
-  const [customer,vehicle]=await Promise.all([entity<Customer>('customers',t,rental.customerId),entity<Vehicle>('vehicles',t,rental.vehicleId)]);
-  const id=newId('invoice');const invoice:Invoice={id,number:`BRO-${id.slice(-8).toUpperCase()}`,rentalId,customerId:rental.customerId,status:'draft',subtotal:rental.subtotal,tax:rental.tax,stamp:rental.stamp,dailyLevy:rental.dailyLevy,total:rental.total,taxRateBps:rental.taxRateBps,externalStatus:'not_configured',issuedAt:null,createdAt:now()};
-  const snapshot=JSON.stringify({rental,customer,vehicle,settings:ctx.workspace.settings,invoice,mode:ctx.workspace.mode});
+  const [customer,vehicle]=await Promise.all([entity<Customer>('customers',t,rental.parties?.payerId||rental.customerId),entity<Vehicle>('vehicles',t,rental.vehicleId)]);
+  const id=newId('invoice');const invoice:Invoice={id,number:`BRO-${id.slice(-8).toUpperCase()}`,rentalId,customerId:customer.id,status:'draft',subtotal:rental.subtotal,tax:rental.tax,stamp:rental.stamp,dailyLevy:rental.dailyLevy,total:rental.total,taxRateBps:rental.taxRateBps,externalStatus:'not_configured',issuedAt:null,createdAt:now()};
+  const snapshot=JSON.stringify({rental,customer,vehicle,people:await partySnapshot(ctx,rental),settings:ctx.workspace.settings,invoice,mode:ctx.workspace.mode});
   return commit(ctx,m,[insert('invoices',{...invoice,tenantId:t,snapshot})],{id},{action:'invoice.draft',type:'invoice',id,detail:`Brouillon pour ${rental.number}`});
 }
 export async function issueInvoice(ctx:Context,m:Mutation,id:string,body:unknown){

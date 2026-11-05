@@ -10,7 +10,7 @@ export function calculateReport(data:WorkspaceData,from:string,to:string){
   const netInvoiced=invoices.reduce((s,i)=>s+i.total,0)-credits.reduce((s,c)=>s+c.amount,0);
   const expenseTotal=expenses.reduce((s,e)=>s+e.amount,0);
   const settled=data.expensePayments.filter(p=>p.date>=from&&p.date<=to).reduce((s,p)=>s+p.amount,0);
-  const receipts=payments.reduce((s,p)=>s+(p.kind==='payment'?p.amount:p.kind==='refund'?-p.amount:0),0);
+  const receipts=payments.reduce((s,p)=>s+(p.method==='withholding'?0:p.kind==='payment'?p.amount:p.kind==='refund'?-p.amount:0),0);
   const supplierDue=data.expenses.reduce((s,e)=>s+Math.max(0,e.amount-data.expensePayments.filter(p=>p.expenseId===e.id).reduce((a,p)=>a+p.amount,0)),0);
   const costByCategory=Object.entries(expenses.reduce<Record<string,number>>((out,e)=>{out[e.category]=(out[e.category]||0)+e.amount;return out;},Object.create(null) as Record<string,number>)).sort((a,b)=>b[1]-a[1]);
   return {period,invoices,credits,expenses,payments,rentals,netInvoiced,expenseTotal,settled,receipts,supplierDue,costByCategory};

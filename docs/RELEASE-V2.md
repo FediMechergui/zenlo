@@ -1,5 +1,7 @@
 # Zenlo — livraison étendue du 5 novembre 2026
 
+**Mise à jour :** [la livraison des dossiers Tunisie](RELEASE-V3.md) ajoute les passeports, conducteurs et payeurs distincts, conformité, sinistres, instruments bancaires, retenues, tarifs, livraisons, transferts, conservation et reprise. Elle précise les intégrations encore non configurées et les limites réelles de chaque parcours.
+
 Cette livraison remplace l'interface initiale par un espace d'exploitation sobre : navigation claire, tableaux homogènes, planning, dossier de location, centre documentaire et formulaires adaptés au mobile. Les actions décrites ci-dessous écrivent dans D1 et, pour les fichiers, dans R2 privé.
 
 ## Extension : bibliothèque originale Zenlo

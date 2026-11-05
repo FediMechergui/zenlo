@@ -36,7 +36,7 @@ const emitted = mkdtempSync(join(tmpdir(), 'zenlo-service-qa-'));
 mkdirSync(join(emitted, 'server'));
 mkdirSync(join(emitted, 'lib'));
 writeFileSync(join(emitted, 'cloudflare.mjs'), 'export const env = new Proxy({}, { get(_target, key) { return globalThis.__zenloBackendQaEnvironment?.[key]; } });');
-for (const name of ['server/domain', 'server/db', 'server/validation', 'server/rentals', 'server/finances', 'server/diagram-assets', 'server/operations', 'server/enterprise', 'server/read', 'server/setup', 'lib/original-vehicles', 'lib/inspection']) {
+for (const name of ['server/dossiers','server/rental-dossier','lib/dossiers','server/domain', 'server/db', 'server/validation', 'server/rentals', 'server/finances', 'server/diagram-assets', 'server/operations', 'server/enterprise', 'server/read', 'server/setup', 'lib/original-vehicles', 'lib/inspection']) {
   const source = readFileSync(join(root, `${name}.ts`), 'utf8');
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, verbatimModuleSyntax: false } }).outputText;
   const resolved = js.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (_match, quote, specifier) => {
@@ -580,7 +580,7 @@ test('full credit prevents further settlement until a replacement invoice is iss
 
 test('departure rechecks the deposit atomically if a restitution races the handover', async t => {
   const { db } = fixture(t), { ctx, adapter } = serviceContext(db);
-  db.prepare("UPDATE customers SET license_number='QA-PERMIT' WHERE id='c1'").run();
+  db.prepare("UPDATE customers SET license_number='QA-PERMIT',identity_number='QA-IDENTITY',issuing_country='TN',license_country='TN' WHERE id='c1'").run();
   const now = Date.now();
   const created = await rentalServices.createRental(ctx, mutation(), rentalInput({ startAt: new Date(now - 3600000).toISOString(), endAt: new Date(now + 23 * 3600000).toISOString() }));
   payment(db, created.id, { kind: 'deposit_received', amount: 1000000 });
@@ -603,7 +603,7 @@ test('a draft quote cannot be confirmed under silently changed fiscal rates', as
 test('departure, inspected replacement and return preserve mileage segments and deposit independence', async t => {
   const { db } = fixture(t), { ctx } = serviceContext(db);
   vehicle(db, 't1', 'v3');
-  db.prepare("UPDATE customers SET license_number='QA-PERMIT' WHERE id='c1'").run();
+  db.prepare("UPDATE customers SET license_number='QA-PERMIT',identity_number='QA-IDENTITY',issuing_country='TN',license_country='TN' WHERE id='c1'").run();
   const now = Date.now();
   const created = await rentalServices.createRental(ctx, mutation(), rentalInput({ startAt: new Date(now - 3600000).toISOString(), endAt: new Date(now + 23 * 3600000).toISOString(), includedKm: 100 }));
   await financeServices.createPayment(ctx, mutation(), { rentalId: created.id, kind: 'deposit_received', method: 'bank', amount: 1000000, reference: 'QA-guarantee', note: '' });
@@ -630,7 +630,7 @@ test('departure, inspected replacement and return preserve mileage segments and 
 for (const additional of [0, 10000]) {
   test(`return adds ${additional} millimes of supplementary charges and preserves the 30000 millime booked options`, async t => {
     const { db } = fixture(t), { ctx } = serviceContext(db);
-    db.prepare("UPDATE customers SET license_number='QA-PERMIT' WHERE id='c1'").run();
+    db.prepare("UPDATE customers SET license_number='QA-PERMIT',identity_number='QA-IDENTITY',issuing_country='TN',license_country='TN' WHERE id='c1'").run();
     const currentTime = Date.now();
     const created = await rentalServices.createRental(ctx, mutation(), rentalInput({
       startAt: new Date(currentTime - 3600000).toISOString(),
@@ -735,7 +735,7 @@ test('quote acceptance rejects a reservation change racing the recorded decision
 
 function identityProof(db,kind,customerId='c1') { const fileId=id('file');insert(db,'agency_files',{id:fileId,tenant_id:'t1',customer_id:customerId,expense_id:null,kind,object_key:`qa/${fileId}`,mime:'image/png',size:100,hash:fileId,label:'QA synthetic proof',verified_at:createdAt,verified_by:'qa-user',revoked_at:null,created_at:createdAt});return fileId; }
 function completeHealth(){const data=inspectionServices.makeInspectionData('hatchback');for(const key of Object.keys(data.checks))data.checks[key]='pass';return data;}
-async function liveReservation(db,ctx){ctx.workspace.mode='live';db.prepare("UPDATE workspaces SET mode='live' WHERE id='t1'").run();db.prepare("UPDATE customers SET license_number='QA-PERMIT' WHERE id='c1'").run();const time=Date.now();return rentalServices.createRental(ctx,mutation(),rentalInput({startAt:new Date(time-3600000).toISOString(),endAt:new Date(time+23*3600000).toISOString(),depositRequired:0}));}
+async function liveReservation(db,ctx){ctx.workspace.mode='live';db.prepare("UPDATE workspaces SET mode='live' WHERE id='t1'").run();db.prepare("UPDATE customers SET license_number='QA-PERMIT',identity_number='QA-IDENTITY',issuing_country='TN',license_country='TN' WHERE id='c1'").run();for(const kind of ['agency','vehicle','insurance','fiscal','privacy'])db.prepare('INSERT INTO dossiers(id,tenant_id,kind,vehicle_id,data,status,version,created_at,updated_at) VALUES(?,?,?,?,?,?,1,?,?)').run('compliance_'+kind,'t1',kind,['vehicle','insurance'].includes(kind)?'v1':null,JSON.stringify({validFrom:'2000-01-01',validUntil:'2099-12-31',operatingUntil:'2099-12-31'}),kind==='insurance'?'active':'approved',createdAt,createdAt);const time=Date.now();return rentalServices.createRental(ctx,mutation(),rentalInput({startAt:new Date(time-3600000).toISOString(),endAt:new Date(time+23*3600000).toISOString(),depositRequired:0}));}
 const inspected=(inspectionData,odometer=10000)=>({odometer,fuelPercent:100,condition:'QA checked',damages:'',customerAccepted:true,inspectionData});
 
 test('live departure requires reviewed health checks and verified identity and licence copies', async t => {

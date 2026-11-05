@@ -12,11 +12,11 @@ export async function getWorkspaceData(user:ChatGPTUser,workspaceId?:string):Pro
   ]);
   const canFinance=['owner','manager','accountant'].includes(ctx.role);const canAudit=['owner','manager'].includes(ctx.role);
   const canIdentity=['owner','manager','agent'].includes(ctx.role),mechanic=ctx.role==='mechanic';
-  const safeCustomers=canIdentity?customers:customers.map(c=>({...c,licenseNumber:'',licenseUntil:'',notes:'',...(ctx.role==='accountant'?{}:{email:'',phone:'',address:'',taxId:''})}));
+  const safeCustomers=canIdentity?customers:customers.map(c=>({...c,identityNumber:'',identityUntil:'',issuingCountry:'',licenseCountry:'',birthDate:'',licenseIssuedAt:'',licenseNumber:'',licenseUntil:'',notes:'',...(ctx.role==='accountant'?{}:{email:'',phone:'',address:'',taxId:''})}));
   await database().batch(guard('EXISTS(SELECT 1 FROM members WHERE tenant_id=? AND id=? AND user_id=? AND role=?)',t,ctx.memberId,user.userId,ctx.role));
   const workspace=mechanic?{...ctx.workspace,settings:{...ctx.workspace.settings,bankName:'',bankAccount:'',fiscalReviewer:'',fiscalSource:'',invoiceWorkflowEvidence:'',taxRateBps:0,stampMillimes:0,dailyLevyRate:0}}:ctx.workspace;
   return {workspace,user:{id:user.userId,name:user.displayName,email:user.email,role:ctx.role},availableWorkspaces:access,vehicles:mechanic?vehicles.map(v=>({...v,dailyRate:0,deposit:0,rentalPolicy:null})):vehicles,customers:safeCustomers,rentals:mechanic?rentals.map(r=>({...r,dailyRate:0,discount:0,extras:0,subtotal:0,tax:0,stamp:0,dailyLevy:0,dailyLevyRate:0,extraKmRate:0,taxRateBps:0,total:0,depositRequired:0,notes:'',termsSnapshot:''})):rentals,inspections,assignments,invoices:mechanic?[]:invoices,creditNotes:mechanic?[]:creditNotes,payments:mechanic?[]:payments,maintenance,blocks,
-    expenses:canFinance?expenses:[],audit:canAudit?audit:[],cashSessions:canFinance?cashSessions:[],members:canAudit?members:[],suppliers:['owner','manager','accountant','mechanic'].includes(ctx.role)?suppliers:[],expensePayments:canFinance?expensePayments:[],obligations,quotes:mechanic?[]:quotes};
+    expenses:canFinance?expenses:[],audit:canAudit?audit:[],cashSessions:canFinance?cashSessions:[],members:canAudit?members:ctx.role==='agent'?members.map(m=>({...m,email:''})):[],suppliers:['owner','manager','accountant','mechanic'].includes(ctx.role)?suppliers:[],expensePayments:canFinance?expensePayments:[],obligations,quotes:mechanic?[]:quotes};
 }
 
 export interface DocumentSnapshot {data:Record<string,unknown>;hash:string;version:number;createdAt:string;}

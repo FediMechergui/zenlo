@@ -1,3 +1,9 @@
+import {exportDossiers,electronicPreparation} from './dossier-export';
+import {changeParties} from './rental-dossier';
+import {retentionPreview,executeRetention} from './retention';
+import {all,database,guard,auditStatement,type Context} from './db';
+import {decodeDossier} from './dossiers';
+import {listDossiers,saveDossier,applyDossierCharge} from './dossiers';
 import { ZodError } from 'zod';
 import { getChatGPTUser } from '../app/chatgpt-auth';
 import { context,hash,previous,availableWorkspaces } from './db';
@@ -49,6 +55,7 @@ export function apiError(error:unknown){
   return json({error:{code:'INTERNAL_ERROR',message:'L’opération n’a pas abouti. Réessayez avec la même demande ou transmettez la référence au support.',correlationId}},500);
 }
 export async function handleApi(request:Request){
+  let failureContext:Context|null=null;
   try{
     const user=await getChatGPTUser();requireCondition(user,'UNAUTHENTICATED','Connectez-vous pour accéder à votre agence.',401);
     const url=new URL(request.url),path=url.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean),method=request.method;
@@ -56,8 +63,13 @@ export async function handleApi(request:Request){
       let data=await getWorkspaceData(user);if(!data){const access=await availableWorkspaces(user);if(access.length){data=await getWorkspaceData(user,access[0].id);const response=json(data);response.headers.set('Set-Cookie',`zenlo_workspace=${encodeURIComponent(access[0].id)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${url.protocol==='https:'?'; Secure':''}`);return response;}}
       return json(data||{needsSetup:true,user:{id:user.userId,name:user.displayName,email:user.email}});
     }
-    const ctx=await context(user);
+    const ctx=await context(user);failureContext=ctx;
     if(method==='GET'&&path.length===1&&path[0]==='export'){requireCondition(ctx,'SETUP_REQUIRED','Configurez votre agence avant de continuer.',409);return exportCsv(ctx,url);}
+    if(method==='GET'&&path.join('/')==='dossiers/export'){requireCondition(ctx,'SETUP_REQUIRED','Agence requise.',409);return exportDossiers(ctx,url.searchParams.get('kind')||'');}
+    if(method==='GET'&&path.length===3&&path[0]==='dossiers'&&path[2]==='electronic-package'){requireCondition(ctx,'SETUP_REQUIRED','Agence requise.',409);return electronicPreparation(ctx,path[1]);}
+    if(method==='GET'&&path.join('/')==='retention'){requireCondition(ctx,'SETUP_REQUIRED','Agence requise.',409);return json(await retentionPreview(ctx));}
+    if(method==='GET'&&path.join('/')==='dossiers/rates'){requireCondition(ctx,'SETUP_REQUIRED','Agence requise.',409);requireCondition(['owner','manager','agent'].includes(ctx.role),'FORBIDDEN','Accès refusé.',403);return json({items:(await all<Record<string,unknown>>("SELECT * FROM dossiers WHERE tenant_id=? AND kind='rate' AND status='active'",ctx.workspace.id)).map(decodeDossier)});}
+    if(method==='GET'&&path.join('/')==='dossiers'){requireCondition(ctx,'SETUP_REQUIRED','Agence requise.',409);return json({items:await listDossiers(ctx)});}
     requireCondition(['POST','PATCH'].includes(method),'METHOD_NOT_ALLOWED','Méthode indisponible.',405);
     const origin=request.headers.get('origin');requireCondition(origin===url.origin,'ORIGIN_REJECTED','L’origine de cette demande n’est pas autorisée.',403);
     const key=request.headers.get('idempotency-key')||'';requireCondition(/^[A-Za-z0-9_-]{16,128}$/.test(key),'IDEMPOTENCY_REQUIRED','Une clé de reprise est requise pour cette opération.',400);
@@ -67,11 +79,16 @@ export async function handleApi(request:Request){
     if(method==='POST'&&path.join('/')==='workspaces/select'){const {workspaceId}=z.object({workspaceId:z.string().min(1).max(180)}).strict().parse(body);const selected=await context(user,workspaceId);requireCondition(selected,'FORBIDDEN','Vous ne disposez pas d’un accès à cette entreprise.',403);const response=json({id:workspaceId});response.headers.set('Set-Cookie',`zenlo_workspace=${encodeURIComponent(workspaceId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${url.protocol==='https:'?'; Secure':''}`);return response;}
     requireCondition(ctx,'SETUP_REQUIRED','Configurez votre agence avant de continuer.',409);const replay=await previous(ctx,mutation);if(replay)return json(replay);
     let result:unknown;
-    if(method==='POST'&&path.length===1&&path[0]==='vehicles')result=await createVehicle(ctx,mutation,body);
+    if(method==='POST'&&path.join('/')==='retention')result=await executeRetention(ctx,mutation,body);
+    else if(method==='POST'&&path.length===1&&path[0]==='dossiers')result=await saveDossier(ctx,mutation,null,body);
+    else if(method==='PATCH'&&path.length===2&&path[0]==='dossiers')result=await saveDossier(ctx,mutation,path[1],body);
+    else if(method==='POST'&&path.length===3&&path[0]==='dossiers'&&path[2]==='apply-charge')result=await applyDossierCharge(ctx,mutation,path[1],body);
+    else if(method==='POST'&&path.length===1&&path[0]==='vehicles')result=await createVehicle(ctx,mutation,body);
     else if(method==='PATCH'&&path.length===2&&path[0]==='vehicles')result=await patchVehicle(ctx,mutation,path[1],body);
     else if(method==='POST'&&path.length===1&&path[0]==='customers')result=await createCustomer(ctx,mutation,body);
     else if(method==='PATCH'&&path.length===2&&path[0]==='customers')result=await patchCustomer(ctx,mutation,path[1],body);
     else if(method==='POST'&&path.length===1&&path[0]==='rentals')result=await createRental(ctx,mutation,body);
+    else if(method==='POST'&&path.length===3&&path[0]==='rentals'&&path[2]==='parties')result=await changeParties(ctx,mutation,path[1],body);
     else if(method==='POST'&&path.length===3&&path[0]==='rentals'&&path[2]==='action')result=await rentalAction(ctx,mutation,path[1],body);
     else if(method==='POST'&&path.length===1&&path[0]==='payments')result=await createPayment(ctx,mutation,body);
     else if(method==='POST'&&path.length===1&&path[0]==='invoices')result=await createInvoice(ctx,mutation,body);
@@ -94,5 +111,5 @@ export async function handleApi(request:Request){
     else if(method==='POST'&&path.length===3&&path[0]==='members'&&path[2]==='revoke')result=await revokeMember(ctx,mutation,path[1],body);
     else throw new BusinessError('NOT_FOUND','Cette opération est introuvable.',404);
     return json(result);
-  }catch(error){return apiError(error);}
+  }catch(error){const response=apiError(error);if(failureContext&&request.method!=='GET')try{const payload=await response.clone().json() as {error:{code:string;correlationId:string}};await auditStatement(failureContext,'operation.failed','request',payload.error.correlationId,`${request.method} ${new URL(request.url).pathname} · ${payload.error.code}`).run();}catch{}return response;}
 }
