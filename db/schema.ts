@@ -14,8 +14,11 @@ export const vehicles = sqliteTable('vehicles', {
   year: integer('year').notNull(), transmission: text('transmission').notNull(), fuel: text('fuel').notNull(), seats: integer('seats').notNull(), odometer: integer('odometer').notNull(),
   status: text('status').notNull().default('ready'), dailyRate: integer('daily_rate').notNull(), deposit: integer('deposit').notNull(),
   insuranceUntil: text('insurance_until').notNull(), inspectionUntil: text('inspection_until').notNull(), color: text('color').notNull(), version: integer('version').notNull().default(1),
-  bodyType:text('body_type').notNull().default('hatchback'),vin:text('vin').notNull().default(''),
+  bodyType:text('body_type').notNull().default('hatchback'),vin:text('vin').notNull().default(''),diagramProfile:text('diagram_profile'),rentalPolicy:text('rental_policy'),
 }, t => [uniqueIndex('vehicles_tenant_id').on(t.tenantId,t.id),uniqueIndex('vehicles_registration').on(t.tenantId,t.registration),check('vehicle_money',sql`${t.dailyRate} >= 0 AND ${t.deposit} >= 0 AND ${t.odometer} >= 0`),foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]})]);
+export const vehicleTemplates = sqliteTable('vehicle_templates', {
+  ...identity(),make:text('make').notNull(),model:text('model').notNull(),bodyType:text('body_type').notNull(),diagramProfile:text('diagram_profile').notNull(),version:integer('version').notNull().default(1),updatedAt:text('updated_at').notNull(),
+},t=>[uniqueIndex('vehicle_templates_tenant_id').on(t.tenantId,t.id),foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]})]);
 export const customers = sqliteTable('customers', {
   ...identity(), type: text('type').notNull(), name: text('name').notNull(), email: text('email').notNull(), phone: text('phone').notNull(), country: text('country').notNull(),
   licenseNumber: text('license_number').notNull(), licenseUntil: text('license_until').notNull(), taxId: text('tax_id').notNull(), notes: text('notes').notNull(), address:text('address').notNull().default(''),

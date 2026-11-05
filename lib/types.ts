@@ -1,4 +1,4 @@
-import type { InspectionData, BodyType } from './inspection';
+import type { InspectionData, BodyType, DiagramProfile, VehicleRentalPolicy } from './inspection';
 export type Role = 'owner' | 'manager' | 'agent' | 'accountant' | 'mechanic' | 'viewer';
 export type RentalStatus = 'draft' | 'confirmed' | 'active' | 'returned' | 'cancelled';
 export type VehicleStatus = 'ready' | 'maintenance' | 'retired';
@@ -24,7 +24,7 @@ export interface Vehicle {
   seats: number; odometer: number; status: VehicleStatus; dailyRate: number;
   deposit: number; insuranceUntil: string; inspectionUntil: string;
   color: string; version: number; createdAt: string;
-  bodyType?: BodyType; vin?: string;
+  bodyType?: BodyType; vin?: string; diagramProfile?: DiagramProfile | null; rentalPolicy?: VehicleRentalPolicy | null;
 }
 export interface Customer {
   id: string; type: 'individual' | 'company'; name: string; email: string;

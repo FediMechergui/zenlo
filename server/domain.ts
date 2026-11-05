@@ -1,4 +1,4 @@
-import type { AgencySettings, Rental } from '../lib/types';
+import type { AgencySettings, Rental, Vehicle } from '../lib/types';
 
 export class BusinessError extends Error {
   constructor(public code:string,message:string,public status=422,public fields?:Record<string,string>){super(message);this.name='BusinessError';}
@@ -16,6 +16,13 @@ export function computePrice(input:{startAt:string;endAt:string;dailyRate:number
 export function priceFromSettings(input:{startAt:string;endAt:string;dailyRate:number;discount:number;extras:number},settings:AgencySettings){
   const snapshot={dailyLevyRate:settings.dailyLevyEnabled?settings.dailyLevyRate:0,dailyLevyTaxable:settings.dailyLevyTaxable,taxRateBps:settings.taxRateBps,stamp:settings.stampMillimes};
   return {...snapshot,...computePrice({...input,...snapshot})};
+}
+export function vehicleRentalSettings(settings:AgencySettings,vehicle:Pick<Vehicle,'bodyType'|'rentalPolicy'>,mode:'demo'|'live'):AgencySettings{
+  if(!['truck','flatbed','tipper','motorcycle','scooter','quad','minibus','bus'].includes(vehicle.bodyType||''))return settings;
+  const p=vehicle.rentalPolicy;
+  if(mode==='live')requireCondition(p?.reviewed&&p.reviewer.trim().length>=3&&p.evidence.trim().length>=20,'VEHICLE_POLICY_REQUIRED','Validez les règles fiscales, le permis requis et les conditions d’exploitation de cette catégorie dans la fiche véhicule.');
+  // Car-specific levy is never silently applied to an additional vehicle family.
+  return {...settings,taxRateBps:p?.taxRateBps??settings.taxRateBps,stampMillimes:p?.stampMillimes??settings.stampMillimes,dailyLevyRate:p?.dailyLevyRate??0,dailyLevyEnabled:(p?.dailyLevyRate??0)>0,dailyLevyTaxable:p?.dailyLevyTaxable??true};
 }
 export function priceFromRental(rental:Rental,endAt=rental.endAt,extras=rental.extras){return computePrice({...rental,endAt,extras});}
 export function tunisDate(value=new Date()){return new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Tunis',year:'numeric',month:'2-digit',day:'2-digit'}).format(value);}

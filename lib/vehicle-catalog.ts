@@ -88,6 +88,34 @@ const SOURCE:Record<string,Partial<Record<BodyType,string>>>={
   'XPeng':{sedan:'P5|P7|P7i',suv:'G3|G6|G9',van:'X9'},
   'Zeekr':{hatchback:'001',sedan:'007',suv:'X|7X',van:'009'},
 };
+// Suggestions for mixed fleets. A model name does not establish registration or rental eligibility.
+const MIXED:Record<string,Partial<Record<BodyType,string>>>={
+  'Yamaha':{motorcycle:'MT-07|MT-09|Tracer 7|Ténéré 700',scooter:'NMAX|XMAX|TMAX',quad:'Grizzly|Kodiak'},
+  'Honda':{motorcycle:'CB500F|CB650R|Africa Twin|Gold Wing',scooter:'PCX|Forza|SH125i'},
+  'Suzuki':{motorcycle:'V-Strom 650|V-Strom 800|GSX-S750',scooter:'Burgman'},
+  'BMW':{motorcycle:'G 310 GS|F 750 GS|R 1250 GS|R 1300 GS',scooter:'C 400 GT|CE 04'},
+  'Kawasaki':{motorcycle:'Z650|Z900|Versys 650|Ninja 400'},
+  'KTM':{motorcycle:'125 Duke|390 Duke|390 Adventure|790 Adventure'},
+  'Ducati':{motorcycle:'Monster|Multistrada|Scrambler'},
+  'Triumph':{motorcycle:'Tiger 900|Trident 660|Bonneville'},
+  'Royal Enfield':{motorcycle:'Classic 350|Himalayan|Interceptor 650'},
+  'Piaggio':{scooter:'Liberty|Beverly|MP3'},'Vespa':{scooter:'Primavera|Sprint|GTS'},
+  'SYM':{scooter:'Symphony|Jet 14|Cruisym|Joymax'},'Kymco':{scooter:'Agility|Downtown|X-Town'},
+  'CFMOTO':{motorcycle:'450MT|650MT',quad:'CFORCE 450|CFORCE 520|CFORCE 625'},
+  'Polaris':{quad:'Sportsman 570|Sportsman 850'},'Can-Am':{quad:'Outlander|Renegade'},
+  'Iveco':{truck:'Daily Fourgon|Eurocargo',flatbed:'Daily Plateau',tipper:'Daily Benne|Trakker',minibus:'Daily Minibus',bus:'Crossway'},
+  'Isuzu':{truck:'N-Series|F-Series',flatbed:'N-Series Plateau',tipper:'N-Series Benne'},
+  'Mercedes-Benz':{truck:'Atego|Actros',tipper:'Arocs',minibus:'Sprinter Minibus',bus:'Tourismo|Citaro'},
+  'MAN':{truck:'TGL|TGM|TGX',tipper:'TGS',minibus:'TGE Minibus',bus:'Lion’s Coach|Lion’s City'},
+  'Scania':{truck:'P-Series|R-Series|S-Series',bus:'Touring'},
+  'Volvo':{truck:'FL|FE|FH',tipper:'FMX',bus:'9700|9900'},
+  'Renault Trucks':{truck:'D|D Wide|T',tipper:'C|K'},'DAF':{truck:'LF|XD|XF'},
+  'Hino':{truck:'300|500|700'},'Fuso':{truck:'Canter|Fighter'},
+  'Hyundai':{truck:'HD35|HD65|HD78',minibus:'County'},
+  'Toyota':{minibus:'Coaster|Hiace Minibus'},'Ford':{minibus:'Transit Minibus',truck:'Transit Châssis'},
+  'Foton':{truck:'Aumark|Ollin',minibus:'View Minibus'},'Yutong':{bus:'ZK6122|C12'},
+};
+for(const [make,types] of Object.entries(MIXED)){const existing=SOURCE[make]||{};for(const [body,models] of Object.entries(types)){const key=body as BodyType;existing[key]=[existing[key],models].filter(Boolean).join('|');}SOURCE[make]=existing;}
 export const CATALOG_SOURCE_URL='https://vpic.nhtsa.dot.gov/api/';
 export const CATALOG_REVIEWED_AT='2026-11-05';
 export interface CatalogModel {name:string;bodyType:BodyType;source:'local'|'vpic';}
@@ -100,6 +128,14 @@ export function catalogModels(make:string):CatalogModel[]{
 export function inferBodyType(make:string,model:string,category=''):BodyType {
   const exact=catalogModels(make).find(m=>normalizeCatalogName(m.name)===normalizeCatalogName(model));if(exact)return exact.bodyType;
   const text=`${model} ${category}`.toLowerCase();
+  if(/scooter|cyclomoteur/.test(text))return 'scooter';
+  if(/moto|motorcycle/.test(text))return 'motorcycle';
+  if(/quad|atv/.test(text))return 'quad';
+  if(/minibus/.test(text))return 'minibus';
+  if(/autobus|autocar|coach/.test(text))return 'bus';
+  if(/benne|tipper/.test(text))return 'tipper';
+  if(/plateau|flatbed/.test(text))return 'flatbed';
+  if(/camion|truck|poids lourd/.test(text))return 'truck';
   if(/pick.?up|pickup|hilux|navara|ranger|d.max|l200|amarok|tunland|wingle|musso/.test(text))return 'pickup';
   if(/cabrio|roadster|convertible|spider|boxster|mx-5/.test(text))return 'convertible';
   if(/utilitaire|fourgon|van|monospace|transit|sprinter|ducato|partner|berlingo|kangoo|trafic|master|hiace|dobl|jumper|jumpy/.test(text))return 'van';

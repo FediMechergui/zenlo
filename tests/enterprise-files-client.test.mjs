@@ -15,7 +15,7 @@ after(()=>{assert.equal(dirname(resolve(emitted)),resolve(tmpdir()));assert.ok(b
 writeFileSync(join(emitted,'cloudflare.mjs'),'export const env=new Proxy({}, {get(_,key){return globalThis.__enterpriseEnvironment?.[key]}});');
 mkdirSync(join(emitted,'app'),{recursive:true});
 writeFileSync(join(emitted,'app/chatgpt-auth.mjs'),'export async function getChatGPTUser(){return globalThis.__enterpriseUser;}');
-const routes=['app/api/files/route.ts','app/api/files/[id]/route.ts','app/api/files/[id]/action/route.ts','app/api/client-access/route.ts','app/api/client-access/[id]/revoke/route.ts','app/api/client/route.ts','app/api/client/[id]/acknowledge/route.ts'];
+const routes=['app/api/vehicle-templates/route.ts','app/api/files/route.ts','app/api/files/[id]/route.ts','app/api/files/[id]/action/route.ts','app/api/client-access/route.ts','app/api/client-access/[id]/revoke/route.ts','app/api/client/route.ts','app/api/client/[id]/acknowledge/route.ts'];
 const files=[...readdirSync(join(root,'server')).filter(n=>n.endsWith('.ts')).map(n=>'server/'+n),...readdirSync(join(root,'lib')).filter(n=>n.endsWith('.ts')).map(n=>'lib/'+n),...routes];
 for(const file of files){
   const output=join(emitted,file.replace(/\.ts$/,'.mjs'));mkdirSync(dirname(output),{recursive:true});
@@ -51,6 +51,8 @@ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42
 const client={userId:'enterprise-client',email:'client-qa@example.test',displayName:'Client QA'};
 const mutation=()=>({key:crypto.randomUUID(),requestHash:crypto.randomUUID()});
 const params=id=>({params:Promise.resolve({id})});
+const templateRoute=await load('app/api/vehicle-templates/route');
+const templateInput={make:'Yamaha',model:'MT-07',bodyType:'motorcycle',diagramProfile:{version:1,label:'QA model',length:90,width:100,height:100,wheelScale:100,roofRack:false}};
 function insert(db,table,object){const entries=Object.entries(object);db.prepare(`INSERT INTO ${table} (${entries.map(([k])=>k).join(',')}) VALUES (${entries.map(()=>'?').join(',')})`).run(...entries.map(([,v])=>v));}
 function jsonRequest(path,body,extra={}){return new Request(origin+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(body),...extra});}
 function uploadRequest({customerId,expenseId,kind='identity_front',bytes=png,mime='image/png'}={}){const form=new FormData();form.set('kind',kind);if(customerId)form.set('customerId',customerId);if(expenseId)form.set('expenseId',expenseId);form.set('label','Test image only, no personal data');form.set('file',new File([bytes],'qa.png',{type:mime}));return new Request(origin+'/api/files',{method:'POST',headers:{Origin:origin},body:form});}
@@ -64,6 +66,25 @@ async function fixture(t){
   return {db,adapter,bucket,data,owner,tenant:data.workspace.id,rental:data.rentals.find(r=>r.status==='returned')};
 }
 async function upload(f,kind='identity_front'){const response=await fileRoutes.POST(uploadRequest({customerId:kind==='logo'?undefined:f.data.customers[0].id,kind}));assert.ok(response.ok,await response.clone().text());return (await response.json()).id;}
+
+test('model templates persist with optimistic versions, safe payloads and repeatable requests',async t=>{
+  await fixture(t);const request=jsonRequest('/api/vehicle-templates',templateInput);const first=await templateRoute.POST(request.clone());assert.equal(first.status,200);const {id}=await first.json();assert.equal((await (await templateRoute.POST(request.clone())).json()).id,id);
+  let items=(await (await templateRoute.GET()).json()).items;assert.equal(items[0].diagramProfile.length,90);
+  assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',{...templateInput,id,expectedVersion:1,diagramProfile:{...templateInput.diagramProfile,length:105}}))).status,200);
+  assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',{...templateInput,id,expectedVersion:1}))).status,409);
+  assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',{...templateInput,diagramProfile:{...templateInput.diagramProfile,svg:'<script/>'}}))).status,422);
+  assert.equal((await templateRoute.DELETE(jsonRequest('/api/vehicle-templates',{id,expectedVersion:2},{method:'DELETE'}))).status,200);assert.deepEqual((await (await templateRoute.GET()).json()).items,[]);
+});
+test('templates reject cross-enterprise access and unauthorized writes',async t=>{
+  const f=await fixture(t);const {id}=await (await templateRoute.POST(jsonRequest('/api/vehicle-templates',templateInput))).json();const second=await setup.setupWorkspace(f.owner,mutation(),{mode:'demo',name:'Second fleet'},true);globalThis.__enterpriseUser={...f.owner,workspaceId:second.workspace.id};assert.deepEqual((await (await templateRoute.GET()).json()).items,[]);
+  assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',{...templateInput,id,expectedVersion:1}))).status,404);assert.equal((await templateRoute.DELETE(jsonRequest('/api/vehicle-templates',{id,expectedVersion:1},{method:'DELETE'}))).status,404);
+  f.db.prepare("UPDATE members SET role='mechanic' WHERE tenant_id=?").run(second.workspace.id);assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',templateInput))).status,403);
+  globalThis.__enterpriseUser=null;assert.equal((await templateRoute.GET()).status,401);
+});
+test('template commit rechecks membership and rolls back after concurrent revocation',async t=>{
+  const f=await fixture(t);f.adapter.beforeBatch=db=>db.prepare('DELETE FROM members WHERE tenant_id=?').run(f.tenant);
+  assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',templateInput))).status,409);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM vehicle_templates').get().n,0);
+});
 async function verificationFingerprint(f){const response=await fileRoutes.GET(new Request(origin+`/api/files?customerId=${f.data.customers[0].id}`));assert.equal(response.status,200);const value=(await response.json()).verificationFingerprint;assert.match(value,/^[a-f0-9]{64}$/);return value;}
 async function grant(f,rental=f.rental,expiresAt=new Date(Date.now()+86400000).toISOString()){
   globalThis.__enterpriseUser=f.owner;const response=await accessRoutes.POST(jsonRequest('/api/client-access',{rentalId:rental.id,email:client.email,name:client.displayName,expiresAt}));assert.equal(response.status,201,await response.clone().text());return (await response.json()).id;

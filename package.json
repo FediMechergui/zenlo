@@ -17,6 +17,7 @@
     "test:http": "node tests/http.integration.mjs",
     "test:browser": "node tests/browser-v2.integration.mjs",
     "test:http:enterprise": "node tests/http-v2.integration.mjs",
+    "test:browser:mixed-fleet": "node tests/mixed-fleet.integration.mjs",
     "test:browser:vehicles": "node tests/vehicle-browser.integration.mjs",
     "test:browser:workflows": "node tests/browser-workflows-v2.integration.mjs"
   },

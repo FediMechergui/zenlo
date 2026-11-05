@@ -4,6 +4,8 @@ Application française de gestion d'entreprises de location automobile en Tunisi
 
 **Version étendue du 5 novembre 2026.** Les parcours livrés sont persistants et testés. Les [notes de livraison](docs/RELEASE-V2.md) et la [revue de préparation](docs/REVIEW.md) distinguent les fonctions exécutables des intégrations et validations encore nécessaires. Ce projet ne constitue pas une certification fiscale ni une intégration TTN opérationnelle.
 
+Les flottes mixtes incluent désormais camions, motos, scooters, minibus, autocars et quads, avec silhouettes réglables, bibliothèque de modèles par entreprise et géométrie figée dans les constats. Voir la section dédiée des notes de livraison.
+
 ## Commencer
 
 Se connecter au site privé puis choisir explicitement une démonstration ou une agence vide. La démonstration comprend 16 véhicules, 10 clients, des locations, échéances, interventions et mouvements fictifs. Les documents portent une mention de démonstration.
@@ -72,6 +74,8 @@ node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0003_known_phantom_reporter.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0004_brief_cobalt_man.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0005_chemical_nebula.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0006_cold_landau.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0007_premium_thunderball.sql
 npm run dev -- --host 127.0.0.1
 ```
 
@@ -84,6 +88,7 @@ npm run test:http
 node tests/http-v2.integration.mjs
 npm run test:browser
 node tests/vehicle-browser.integration.mjs
+node tests/mixed-fleet.integration.mjs
 ```
 
 Les tests HTTP créent exclusivement des données fictives locales et refusent une URL distante. Captures et résultats : `outputs/`, ignoré par Git. La suite métier utilise les vraies migrations et services avec un adaptateur SQLite transactionnel ; elle ne mesure pas la charge ou la disponibilité distante.

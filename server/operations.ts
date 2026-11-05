@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { diagramFingerprint } from '../lib/inspection';
 import type { AgencySettings, Vehicle, Maintenance, Supplier, Customer } from '../lib/types';
 import { type Context,type Mutation,authorize,entity,guard,versionGuard,insert,statement,update,commit,newId,now,first } from './db';
 import { vehicleSchema,vehiclePatch,customerSchema,maintenanceSchema,expenseSchema,settingsSchema,memberSchema,money,short,text,required } from './validation';
@@ -12,6 +13,10 @@ export async function patchVehicle(ctx:Context,m:Mutation,id:string,body:unknown
   authorize(ctx,['owner','manager']);const {expectedVersion,...value}=vehiclePatch.parse(body);requireCondition(Object.keys(value).length>0,'NO_CHANGES','Aucune modification reçue.');const t=ctx.workspace.id,old=await entity<Vehicle>('vehicles',t,id);
   requireCondition(old.version===expectedVersion,'STALE_VERSION','Ce véhicule a été modifié. Actualisez la fiche.',409);if(value.odometer!==undefined)requireCondition(value.odometer>=old.odometer,'ODOMETER_DECREASE','Une correction négative exige une procédure de rectification documentée.');
   const sql=[...versionGuard('vehicles',t,id,expectedVersion)];
+  if(value.bodyType!==undefined||value.diagramProfile!==undefined||value.rentalPolicy!==undefined){
+    const changed=(value.bodyType!==undefined&&value.bodyType!==old.bodyType)||(value.diagramProfile!==undefined&&diagramFingerprint(value.diagramProfile)!==diagramFingerprint(old.diagramProfile))||(value.rentalPolicy!==undefined&&JSON.stringify(value.rentalPolicy??null)!==JSON.stringify(old.rentalPolicy??null));
+    if(changed){requireCondition(!await first("SELECT id FROM rentals WHERE tenant_id=? AND vehicle_id=? AND status='active'",t,id),'VEHICLE_IN_USE','Terminez la location en cours avant de modifier la silhouette ou les règles de location de ce véhicule.',409);sql.push(...guard("NOT EXISTS(SELECT 1 FROM rentals WHERE tenant_id=? AND vehicle_id=? AND status='active')",t,id));}
+  }
   if(value.status&&value.status!=='ready')sql.push(...guard("NOT EXISTS(SELECT 1 FROM rentals WHERE tenant_id=? AND vehicle_id=? AND status='active')",t,id));
   sql.push(update('vehicles',{...value,version:expectedVersion+1},'tenant_id=? AND id=?',t,id));
   return commit(ctx,m,sql,{id},{action:'vehicle.updated',type:'vehicle',id,detail:`${old.registration} · champs : ${Object.keys(value).join(', ')}`});

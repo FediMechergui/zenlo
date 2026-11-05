@@ -88,6 +88,7 @@ function serviceContext(db, overrides = {}) {
   return { ctx, adapter };
 }
 const mutation = () => ({ key: crypto.randomUUID(), requestHash: crypto.randomUUID() });
+const mixedPolicy={reviewed:true,reviewer:'QA reviewer',evidence:'Fictional rules reviewed for synthetic fleet tests only.',taxRateBps:1700,stampMillimes:1000,dailyLevyRate:0,dailyLevyTaxable:true};
 function rentalInput(overrides = {}) {
   return { customerId: 'c1', vehicleId: 'v1', startAt, endAt, dailyRate: 100000, discount: 0, extras: 0, depositRequired: 1000000, includedKm: 1000, extraKmRate: 500, source: 'agency', pickupLocation: 'Tunis', returnLocation: 'Tunis', notes: '', status: 'confirmed', ...overrides };
 }
@@ -826,4 +827,29 @@ test('live supplier contacts require hosting approval and recheck that approval 
   ctx.workspace.settings.hostingValidated=true;adapter.beforeBatch=database=>database.prepare('UPDATE workspaces SET version=version+1 WHERE id=?').run(ctx.workspace.id);
   await assert.rejects(enterpriseServices.createSupplier(ctx,mutation(),{name:'QA supplier',contact:'QA person',email:'qa@example.test'}),/operation_precondition/);
   assert.equal(db.prepare('SELECT count(*) n FROM suppliers').get().n,0);
+});
+
+test('mixed fleet rentals use explicit vehicle rates and live bookings reject an unreviewed policy',async t=>{
+  const {db}=fixture(t),{ctx}=serviceContext(db);db.prepare("UPDATE vehicles SET body_type='motorcycle' WHERE id='v1'").run();ctx.workspace.mode='live';
+  await assert.rejects(rentalServices.createRental(ctx,mutation(),rentalInput()),{code:'VEHICLE_POLICY_REQUIRED'});
+  db.prepare("UPDATE vehicles SET rental_policy=? WHERE id='v1'").run(JSON.stringify(mixedPolicy));
+  const created=await rentalServices.createRental(ctx,mutation(),rentalInput());const r=await dbServices.entity('rentals','t1',created.id);assert.equal(r.dailyLevy,0);assert.equal(r.taxRateBps,1700);assert.equal(r.total,586000);
+  const quote=await enterpriseServices.createQuote(ctx,mutation(),{rentalId:created.id,validUntil:'2099-01-31'});assert.ok(quote.id);
+});
+test('custom inspection geometry is verified at departure, preserved in reports and frozen during active rentals',async t=>{
+  const {db}=fixture(t),{ctx}=serviceContext(db);const profile={...inspectionServices.DEFAULT_DIAGRAM_PROFILE,label:'QA motorcycle',length:85};
+  await operationServices.patchVehicle(ctx,mutation(),'v1',{expectedVersion:1,bodyType:'motorcycle',diagramProfile:profile,rentalPolicy:mixedPolicy});
+  const created=await liveReservation(db,ctx);identityProof(db,'identity_front');identityProof(db,'license_front');
+  const data={...completeHealth(),bodyType:'motorcycle',diagramProfile:profile};
+  await assert.rejects(rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected({...data,diagramProfile:{...profile,length:100}})}),{code:'INSPECTION_GEOMETRY_CHANGED'});
+  await rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected(data)});
+  const vehicle=await dbServices.entity('vehicles','t1','v1');await assert.rejects(operationServices.patchVehicle(ctx,mutation(),'v1',{expectedVersion:vehicle.version,diagramProfile:{...profile,length:110}}),{code:'VEHICLE_IN_USE'});
+  await rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkin',expectedVersion:2,inspection:inspected(data,10010)});
+  const updated=await dbServices.entity('vehicles','t1','v1');await operationServices.patchVehicle(ctx,mutation(),'v1',{expectedVersion:updated.version,diagramProfile:{...profile,length:110}});
+  const snapshots=db.prepare('SELECT inspection_data FROM inspections').all().map(x=>JSON.parse(x.inspection_data));assert.ok(snapshots.every(x=>x.diagramProfile.length===85));
+});
+test('geometry writes racing a departure cannot replace its evidence basis',async t=>{
+  const {db}=fixture(t),{ctx,adapter}=serviceContext(db);const profile={...inspectionServices.DEFAULT_DIAGRAM_PROFILE,label:'Guarded'};await operationServices.patchVehicle(ctx,mutation(),'v1',{expectedVersion:1,diagramProfile:profile});const created=await liveReservation(db,ctx);identityProof(db,'identity_front');identityProof(db,'license_front');
+  adapter.beforeBatch=d=>d.prepare("UPDATE vehicles SET version=version+1,diagram_profile=? WHERE id='v1'").run(JSON.stringify({...profile,length:90}));
+  await assert.rejects(rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected({...completeHealth(),diagramProfile:profile})}),/operation_precondition/);assert.equal(db.prepare('SELECT COUNT(*) n FROM inspections').get().n,0);
 });

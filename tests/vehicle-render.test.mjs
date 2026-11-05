@@ -20,12 +20,19 @@ for(const file of ['lib/inspection.ts','app/components/vehicle-diagram.tsx']){
 const {VehicleDiagram}=await import(pathToFileURL(join(emitted,'app/components/vehicle-diagram.mjs')).href);
 
 test('server-rendered vehicle diagrams have scalar accessible titles matching client text',()=>{
-  for(const bodyType of ['hatchback','sedan','suv','van','pickup','coupe','convertible']){
+  for(const bodyType of ['hatchback','sedan','suv','van','pickup','coupe','convertible','truck','flatbed','tipper','motorcycle','scooter','minibus','bus','quad']){
     const html=renderToStaticMarkup(createElement(VehicleDiagram,{bodyType,readOnly:true}));
     const titles=[...html.matchAll(/<title[^>]*>(.*?)<\/title>/g)].map(m=>m[1]);
     assert.deepEqual(titles,['Avant du véhicule','Arrière du véhicule','Côté gauche du véhicule','Côté droit du véhicule']);
     assert.equal((html.match(/aria-labelledby=/g)||[]).length,4);
   }
+});
+test('custom dimensions change the silhouette without transforming evidence coordinates',()=>{
+  const profile={version:1,label:'QA model',length:85,width:75,height:90,wheelScale:110,roofRack:true};
+  const mark={id:'point',view:'left',x:20,y:30,type:'dent',severity:'light',status:'existing',note:''};
+  const html=renderToStaticMarkup(createElement(VehicleDiagram,{bodyType:'truck',profile,marks:[mark],readOnly:true}));
+  assert.ok(html.includes('scale(0.85 0.9)'));assert.ok(html.includes('translate(80 57)'));assert.ok(html.includes('QA model'));
+  assert.ok(!html.includes('NaN'));assert.ok(!html.includes('undefined'));
 });
 test('damage and interactive diagram titles survive SSR without missing text or injected markup',()=>{
   const marks=[{id:'mark_qa',view:'left',x:25,y:50,type:'scratch',severity:'light',status:'new',note:'Porte <avant> & aile'}];

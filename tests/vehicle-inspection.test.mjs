@@ -1,9 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { inspectionDataSchema, makeInspectionData, parseInspectionData, inspectionProgress, compareInspectionMarks } from '../lib/inspection.ts';
+import { inspectionDataSchema, makeInspectionData, parseInspectionData, inspectionProgress, compareInspectionMarks,DEFAULT_DIAGRAM_PROFILE,diagramProfileSchema,checkLabelsFor } from '../lib/inspection.ts';
 import { LOCAL_MAKES, catalogModels, inferBodyType, mergeMakes, mergeModels } from '../lib/vehicle-catalog.ts';
 
 const mark=(id='mark_one')=>({id,view:'left',x:25,y:50,type:'scratch',severity:'light',note:'Rayure sur la porte',status:'new'});
+
+test('mixed fleet model suggestions infer distinct types and relevant inspection labels',()=>{
+  for(const [make,model,body] of [['Yamaha','MT-07','motorcycle'],['Yamaha','NMAX','scooter'],['Iveco','Daily Benne','tipper'],['Mercedes-Benz','Actros','truck'],['Toyota','Coaster','minibus'],['Polaris','Sportsman 570','quad']])assert.equal(inferBodyType(make,model),body);
+  assert.match(checkLabelsFor('motorcycle').spare,/chaîne/);assert.match(checkLabelsFor('truck').body,/plateau/);assert.match(checkLabelsFor('bus').safety,/Issues/);
+});
+test('open damage retains the previous geometry while repaired histories allow a new model profile',()=>{
+  const old=makeInspectionData('motorcycle',null,{...DEFAULT_DIAGRAM_PROFILE,label:'Original',length:85});old.marks=[mark()];
+  const revised={...DEFAULT_DIAGRAM_PROFILE,label:'Revised',length:105};
+  const next=makeInspectionData('scooter',old,revised);assert.equal(next.bodyType,'motorcycle');assert.equal(next.diagramProfile.length,85);next.diagramProfile.label='Independent';assert.equal(old.diagramProfile.label,'Original');
+  old.marks[0].status='repaired';const fresh=makeInspectionData('scooter',old,revised);assert.equal(fresh.bodyType,'scooter');assert.equal(fresh.diagramProfile.length,105);assert.equal(fresh.marks.length,0);
+});
+test('diagram configuration rejects unsafe geometry and arbitrary image or code payloads',()=>{
+  for(const value of [{...DEFAULT_DIAGRAM_PROFILE,width:0},{...DEFAULT_DIAGRAM_PROFILE,length:500},{...DEFAULT_DIAGRAM_PROFILE,svg:'<script/>'},{...DEFAULT_DIAGRAM_PROFILE,label:'x'.repeat(101)}])assert.equal(diagramProfileSchema.safeParse(value).success,false);
+  assert.equal(inspectionDataSchema.safeParse({...makeInspectionData('truck'),diagramProfile:DEFAULT_DIAGRAM_PROFILE}).success,true);
+});
 
 test('next inspection preserves unresolved mark identity but never copies completed safety checks',()=>{
   const previous=makeInspectionData('suv');previous.marks=[mark(),{...mark('mark_fixed'),status:'repaired'}];previous.checks.tires='pass';previous.checks.brakes='fail';previous.notes='Previous inspection';

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { inspectionDataSchema } from '../lib/inspection';
+import { inspectionDataSchema, BODY_TYPE_VALUES, diagramProfileSchema, vehicleRentalPolicySchema } from '../lib/inspection';
 export const text = z.string().trim().max(2000);
 export const short = z.string().trim().max(180);
 export const required = short.min(1,'Ce champ est obligatoire.');
@@ -8,7 +8,7 @@ export const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/,'Date attendue au for
 export const optionalDate = z.union([date,z.literal('')]);
 export const timestamp = z.string().datetime({offset:true}).transform(s=>new Date(s).toISOString());
 export const email = z.union([z.string().email().max(254),z.literal('')]).transform(v=>v.toLowerCase());
-export const vehicleSchema=z.object({registration:required.transform(v=>v.toUpperCase()),make:required,model:required,category:required,year:z.number().int().min(1980).max(2100),transmission:z.enum(['manual','automatic']),fuel:z.enum(['petrol','diesel','hybrid','electric']),seats:z.number().int().min(1).max(30),odometer:z.number().int().min(0).max(3_000_000),dailyRate:money,deposit:money,insuranceUntil:date,inspectionUntil:date,color:short.default('Blanc'),bodyType:z.enum(['hatchback','sedan','suv','van','pickup','coupe','convertible']).default('hatchback'),vin:short.max(40).default('')}).strict();
+export const vehicleSchema=z.object({registration:required.transform(v=>v.toUpperCase()),make:required,model:required,category:required,year:z.number().int().min(1980).max(2100),transmission:z.enum(['manual','automatic']),fuel:z.enum(['petrol','diesel','hybrid','electric']),seats:z.number().int().min(1).max(100),odometer:z.number().int().min(0).max(3_000_000),dailyRate:money,deposit:money,insuranceUntil:date,inspectionUntil:date,color:short.default('Blanc'),bodyType:z.enum(BODY_TYPE_VALUES).default('hatchback'),diagramProfile:diagramProfileSchema.nullable().optional(),rentalPolicy:vehicleRentalPolicySchema.nullable().optional(),vin:short.max(40).default('')}).strict();
 export const vehiclePatch=vehicleSchema.partial().extend({status:z.enum(['ready','maintenance','retired']).optional(),expectedVersion:z.number().int().positive()}).strict();
 export const customerSchema=z.object({type:z.enum(['individual','company']).default('individual'),name:required,email:email.default(''),phone:short.min(5,'Indiquez un numéro de téléphone.'),country:short.default('Tunisie'),licenseNumber:short.default(''),licenseUntil:optionalDate.default(''),taxId:short.default(''),notes:text.default(''),address:text.default('')}).strict();
 export const rentalSchema=z.object({customerId:required,vehicleId:required,startAt:timestamp,endAt:timestamp,dailyRate:money,discount:money.default(0),extras:money.default(0),depositRequired:money,includedKm:z.number().int().min(0).max(1_000_000).default(1000),extraKmRate:money.default(500),source:z.enum(['agency','phone','website','partner']).default('agency'),pickupLocation:required,returnLocation:required,notes:text.default(''),status:z.enum(['draft','confirmed']).default('draft')}).strict();
