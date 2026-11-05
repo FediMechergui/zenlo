@@ -15,7 +15,7 @@ const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cac
 async function requestBody(request:Request){
   requireCondition(request.headers.get('content-type')?.split(';')[0].trim()==='application/json','CONTENT_TYPE_REQUIRED','Envoyez une requête JSON.',415);
   const reader=request.body?.getReader();if(!reader)return '{}';let size=0;const chunks:Uint8Array[]=[];
-  while(true){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>131072){await reader.cancel();throw new BusinessError('REQUEST_TOO_LARGE','La demande dépasse la taille autorisée.',413);}chunks.push(value);}
+  while(true){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>262144){await reader.cancel();throw new BusinessError('REQUEST_TOO_LARGE','La demande dépasse la taille autorisée.',413);}chunks.push(value);}
   const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return new TextDecoder().decode(bytes)||'{}';
 }
 const sqlErrors:Record<string,[string,string,number]>={

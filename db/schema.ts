@@ -93,3 +93,6 @@ export const clientAccess = sqliteTable('client_access', {
 export const clientAcknowledgments = sqliteTable('client_acknowledgments', {
   ...identity(),rentalId:text('rental_id').notNull(),userId:text('user_id').notNull(),email:text('email').notNull(),inspectionHash:text('inspection_hash').notNull(),
 },t=>[uniqueIndex('client_acknowledgment_current').on(t.tenantId,t.rentalId,t.userId,t.inspectionHash),foreignKey({columns:[t.tenantId,t.rentalId],foreignColumns:[rentals.tenantId,rentals.id]})]);
+export const vehicleDiagramAssets=sqliteTable('vehicle_diagram_assets',{
+  ...identity(),objectKey:text('object_key').notNull(),mime:text('mime').notNull(),size:integer('size').notNull(),hash:text('hash').notNull(),label:text('label').notNull(),
+},t=>[uniqueIndex('diagram_asset_hash').on(t.tenantId,t.hash),foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]}),check('diagram_asset_size',sql`${t.size}>0 AND ${t.size}<=5242880`)]);

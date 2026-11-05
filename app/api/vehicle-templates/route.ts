@@ -1,3 +1,4 @@
+import { validateDiagramReference } from '../../../server/diagram-assets';
 import { z } from 'zod';
 import { vehicleTemplateSchema } from '../../../lib/inspection';
 import { fileContext, fileGuard, privateHeaders } from '../../../server/file-access';
@@ -10,9 +11,9 @@ export const dynamic='force-dynamic';
 export async function GET(){try{const ctx=await fileContext();const items=await rows<VehicleTemplate>('vehicle_templates',ctx.workspace.id,'make,model,created_at');await database().batch(fileGuard(ctx));return Response.json({items},{headers:privateHeaders});}catch(error){return apiError(error);}}
 const saveSchema=vehicleTemplateSchema.extend({id:z.string().min(1).max(100).optional(),expectedVersion:z.number().int().positive().optional()}).strict();
 export async function POST(request:Request){try{
-  requireOrigin(request);const ctx=await fileContext();authorize(ctx,['owner','manager']);const {raw,body}=await boundedJson(request);const input=saveSchema.parse(body);
+  requireOrigin(request);const ctx=await fileContext();authorize(ctx,['owner','manager']);const {raw,body}=await boundedJson(request,65536);const input=saveSchema.parse(body);
   const mutation={key:requestKey(request),requestHash:await hash(raw)};const replay=await previous(ctx,mutation);if(replay)return Response.json(replay,{headers:privateHeaders});
-  const {id:existing,expectedVersion,...data}=input;const id=existing||newId('template'),time=now();const statements=[...fileGuard(ctx)];
+  const {id:existing,expectedVersion,...data}=input;const id=existing||newId('template'),time=now();const statements=[...fileGuard(ctx),...await validateDiagramReference(ctx,data)];
   if(existing){const old=await entity<VehicleTemplate>('vehicle_templates',ctx.workspace.id,existing);requireCondition(expectedVersion===old.version,'STALE_VERSION','Ce modèle a été modifié. Actualisez la liste.',409);statements.push(...versionGuard('vehicle_templates',ctx.workspace.id,existing,old.version),update('vehicle_templates',{...data,version:old.version+1,updatedAt:time},'tenant_id=? AND id=?',ctx.workspace.id,existing));}
   else{requireCondition(expectedVersion===undefined,'INVALID_VERSION','Un nouveau modèle ne possède pas de version.');statements.push(...guard('(SELECT COUNT(*) FROM vehicle_templates WHERE tenant_id=?)<200',ctx.workspace.id),insert('vehicle_templates',{...data,id,tenantId:ctx.workspace.id,version:1,createdAt:time,updatedAt:time}));}
   const result=await commit(ctx,mutation,statements,{id},{action:existing?'vehicle.template.updated':'vehicle.template.created',type:'vehicle_template',id,detail:`${data.make} ${data.model} · ${data.bodyType}`});return Response.json(result,{headers:privateHeaders});

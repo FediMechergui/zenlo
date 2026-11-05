@@ -57,6 +57,13 @@
       "when": 1793872849535,
       "tag": "0007_premium_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793874390658,
+      "tag": "0008_tiresome_midnight",
+      "breakpoints": true
     }
   ]
 }

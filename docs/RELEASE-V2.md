@@ -2,6 +2,31 @@
 
 Cette livraison remplace l'interface initiale par un espace d'exploitation sobre : navigation claire, tableaux homogènes, planning, dossier de location, centre documentaire et formulaires adaptés au mobile. Les actions décrites ci-dessous écrivent dans D1 et, pour les fichiers, dans R2 privé.
 
+## Extension : vues détaillées et références par modèle
+
+Les nouveaux véhicules utilisent huit vues : avant, arrière, gauche, droite, dessus, habitacle/assises, tableau de bord/commandes et coffre/chargement. Les quinze carrosseries disposent de détails de pièces (rétroviseurs, poignées, éclairage, essuie-glaces, roues, commandes, assises et équipements selon la famille). **Agrandir** facilite le placement précis des repères. Les anciens constats conservent leurs quatre vues ; activer les vues détaillées dans la fiche ne les redessine pas.
+
+Dans **Schéma du modèle → Configurer les références**, importer des images JPEG/PNG propres à la génération et à la variante. Renseigner marque, modèle, années de fabrication, génération, configuration, source/licence et vérificateur. L’API refuse une référence d’un autre modèle, d’une autre année ou d’une autre entreprise. Chaque vue importée remplace intégralement le dessin générique, sans déformation par les curseurs. La vérification par l’agence exige huit vues et les métadonnées ; ce n’est pas une certification constructeur.
+
+Les **zones de pièces** permettent de définir jusqu’à 60 zones nommées sur les références. Cliquer une zone préremplit la pièce du constat ; le nom reste modifiable et accessible au clavier. Le constat conserve les pièces, coordonnées et références. Les rapports et le portail client utilisent cette copie historique. Le bouton d’impression attend le chargement des images et signale un échec au lieu de lancer un PDF incomplet.
+
+Les fichiers sont privés et immuables, dédupliqués par entreprise, limités à 5 Mo par vue et 2 000 images par entreprise. Les propriétaires/responsables les importent ; un client ne peut lire que les images présentes dans les constats d’un dossier qui lui est explicitement accordé. Retirer une référence d’une fiche ne supprime pas l’image des anciens rapports. La migration 0008 ajoute leur catalogue. Aucune bibliothèque externe ni clé fournisseur n’est incluse dans cette livraison : les gabarits intégrés restent explicitement génériques.
+
+### Recherche des illustrations — 5 novembre 2026
+
+Les sources consultées ne permettent pas de promettre un dessin exact de chaque modèle, intérieur et extérieur. La couverture doit être vérifiée par génération, facelift, marché, carrosserie et configuration réelle. Les camions exigent notamment la cabine, l’empattement et le montage de caisse ; les deux côtés ne doivent pas être obtenus automatiquement par symétrie lorsque les pièces diffèrent.
+
+| Fournisseur | Utilité constatée | Limite pour Zenlo |
+| --- | --- | --- |
+| [CCVision CAR-SPECIAL](https://www.ccvision.de/en/car-special/product-info.html) | Dessins extérieurs en cinq vues ; catalogue couvrant notamment voitures, utilitaires, poids lourds, autobus et deux-roues. | Les [conditions standard](https://www.ccvision.de/en/service/help/car-special.html) interdisent l’intégration dans un logiciel et prévoient une licence spéciale pour ces usages. Aucun droit d’intégration SaaS acquis. |
+| [Outlines](https://getoutlines.com/vector-drawings/2240/2016-2018-renault-clio-drawings) | Exemple précis disponible : Clio IV 5 portes facelift 2016–2018 ; vues et pièces en couches vectorielles. | Le fournisseur précise que ses dessins ne sont pas des plans exacts de réparation. Sa [FAQ](https://getoutlines.com/help/faq-and-support) exclut les intérieurs et zones de chargement. Vérifier les droits SaaS, les deux côtés et chaque référence ; ne pas confondre « REQUEST » avec un fichier disponible. |
+| [Pro Vehicle Outlines](https://www.provehicleoutlines.com/) | Bibliothèque extérieure de voitures, utilitaires, camions et véhicules spécialisés européens/nord-américains. | L’[EULA](https://www.provehicleoutlines.com/pvo-eula/) ne constitue pas une licence générale de redistribution des dessins dans Zenlo. Couverture locale et droits d’intégration à confirmer. |
+| [Izmostock](https://www.izmostock.com/faqs-en-us.htm) | Images et vues intérieures/extérieures, distribution API/FTP, rapprochement par modèle/finition. | Photographies/visuels, pas catalogue universel de silhouettes. Licence à durée limitée, sans licence perpétuelle standard ; il faut obtenir les droits de conserver les rapports historiques. |
+
+Recommandation : qualifier une licence spéciale CCVision pour les extérieurs de la flotte pilote, puis des dessins intérieurs commandés à partir de références autorisées et de la configuration réelle. Izmostock est une alternative pour des visuels intérieurs si ses droits conviennent aux rapports. Il s’agit d’une recommandation de sourcing, pas d’une intégration réalisée. Aucun fournisseur n’a été contacté, aucun compte créé et aucun achat effectué.
+
+Avant un contrat fournisseur, obtenir une liste de modèles disponibles et les droits couvrant : affichage dans un SaaS multi-entreprise, portail client, adaptation/rastérisation et zones de pièces, impressions/PDF, hébergement privé et conservation des constats après fin de licence. Demander séparément le coût des dessins manquants, des deux côtés et des intérieurs. Les tarifs publics d’un abonnement de dessin ne sont pas un devis d’intégration Zenlo.
+
 ## Extension : flotte mixte et modèles personnalisés
 
 Dans **Parc automobile → Ajouter un véhicule**, choisir une famille : voiture/utilitaire, camion, moto/scooter, minibus/autocar ou quad. Les quinze silhouettes comprennent camion fourgon, plateau et benne. La recherche propose des marques/modèles adaptés à la famille ; la saisie libre reste disponible. NHTSA enrichit les suggestions automobiles ; les autres familles utilisent le catalogue local.
@@ -31,7 +56,7 @@ Ces personnalisations sont vectorielles : elles ne fournissent ni dessin constru
 
 ## Vérification
 
-- `npm test` : 128 tests réussis, 0 échec ; migrations réelles dans SQLite, services et routes réels, contrôles de concurrence, droits, pièces, portail, rapports, montants et schémas, dont le rendu serveur accessible des quinze silhouettes.
+- `npm test` : 134 tests réussis, 0 échec ; migrations réelles dans SQLite, services et routes réels, contrôles de concurrence, droits, pièces, portail, rapports, montants et schémas, dont le rendu serveur accessible des quinze silhouettes en quatre et huit vues, les références et leur isolation.
 - `npm run typecheck` : interfaces, routes et composants TypeScript.
 - `node tests/http.integration.mjs` : parcours de location historique, 14 contrôles HTTP.
 - `node tests/http-v2.integration.mjs` : 11 parcours d'extension, fichiers, multi-entreprise, fournisseurs, documents, vrai export PDF et accès client.
@@ -39,8 +64,9 @@ Ces personnalisations sont vectorielles : elles ne fournissent ni dessin constru
 - `npm run test:browser:workflows` : huit parcours avec écriture par l'interface, dont profil, fournisseur, charge/règlement, devis, récurrence et isolation d'entreprise.
 - `npm run test:browser:mixed-fleet` : neuf parcours de création, bibliothèque, isolation des copies, camion, mobile, constat moto, PDF et portail client. Exécutable aussi sur le build local avec `ZENLO_BUILT_QA=1`.
 - `node tests/vehicle-browser.integration.mjs` : six contrôles de recherche, clavier, repères, checklist, kilomètres et mobile.
+- `node tests/model-references.integration.mjs` : six parcours de vues détaillées/agrandissement, import des huit références, vérification de modèle, zones de pièces, mobile, reports PDF et portail client ; fixtures dessinées par le test, jamais présentées comme dessins constructeur. Exécutable sur le build local avec `ZENLO_BUILT_QA=1`.
 
-Les tests HTTP utilisent uniquement la base locale fictive. Les images, le PDF d'exemple et les résultats détaillés restent dans `outputs/`. Les migrations 0003 à 0007 ajoutent les données et protections sans remplacer les historiques existants.
+Les tests HTTP utilisent uniquement la base locale fictive. Les images, le PDF d'exemple et les résultats détaillés restent dans `outputs/`. Les migrations 0003 à 0008 ajoutent les données et protections sans remplacer les historiques existants. Les nouveaux parcours de références ont été exécutés sur serveur de développement et build local ; les anciens parcours non liés à cette extension correspondent à la recette V2 précédente.
 
 ## Conditions et limites précises
 

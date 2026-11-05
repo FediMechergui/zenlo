@@ -15,7 +15,7 @@ after(()=>{assert.equal(dirname(resolve(emitted)),resolve(tmpdir()));assert.ok(b
 writeFileSync(join(emitted,'cloudflare.mjs'),'export const env=new Proxy({}, {get(_,key){return globalThis.__enterpriseEnvironment?.[key]}});');
 mkdirSync(join(emitted,'app'),{recursive:true});
 writeFileSync(join(emitted,'app/chatgpt-auth.mjs'),'export async function getChatGPTUser(){return globalThis.__enterpriseUser;}');
-const routes=['app/api/vehicle-templates/route.ts','app/api/files/route.ts','app/api/files/[id]/route.ts','app/api/files/[id]/action/route.ts','app/api/client-access/route.ts','app/api/client-access/[id]/revoke/route.ts','app/api/client/route.ts','app/api/client/[id]/acknowledge/route.ts'];
+const routes=['app/api/diagram-assets/route.ts','app/api/diagram-assets/[id]/route.ts','app/api/vehicle-templates/route.ts','app/api/files/route.ts','app/api/files/[id]/route.ts','app/api/files/[id]/action/route.ts','app/api/client-access/route.ts','app/api/client-access/[id]/revoke/route.ts','app/api/client/route.ts','app/api/client/[id]/acknowledge/route.ts'];
 const files=[...readdirSync(join(root,'server')).filter(n=>n.endsWith('.ts')).map(n=>'server/'+n),...readdirSync(join(root,'lib')).filter(n=>n.endsWith('.ts')).map(n=>'lib/'+n),...routes];
 for(const file of files){
   const output=join(emitted,file.replace(/\.ts$/,'.mjs'));mkdirSync(dirname(output),{recursive:true});
@@ -52,6 +52,7 @@ const client={userId:'enterprise-client',email:'client-qa@example.test',displayN
 const mutation=()=>({key:crypto.randomUUID(),requestHash:crypto.randomUUID()});
 const params=id=>({params:Promise.resolve({id})});
 const templateRoute=await load('app/api/vehicle-templates/route');
+const diagramUpload=await load('app/api/diagram-assets/route'),diagramGet=await load('app/api/diagram-assets/[id]/route'),diagramService=await load('server/diagram-assets');
 const templateInput={make:'Yamaha',model:'MT-07',bodyType:'motorcycle',diagramProfile:{version:1,label:'QA model',length:90,width:100,height:100,wheelScale:100,roofRack:false}};
 function insert(db,table,object){const entries=Object.entries(object);db.prepare(`INSERT INTO ${table} (${entries.map(([k])=>k).join(',')}) VALUES (${entries.map(()=>'?').join(',')})`).run(...entries.map(([,v])=>v));}
 function jsonRequest(path,body,extra={}){return new Request(origin+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(body),...extra});}
@@ -66,6 +67,39 @@ async function fixture(t){
   return {db,adapter,bucket,data,owner,tenant:data.workspace.id,rental:data.rentals.find(r=>r.status==='returned')};
 }
 async function upload(f,kind='identity_front'){const response=await fileRoutes.POST(uploadRequest({customerId:kind==='logo'?undefined:f.data.customers[0].id,kind}));assert.ok(response.ok,await response.clone().text());return (await response.json()).id;}
+
+test('model-reference images are private, immutable, deduplicated and isolated by enterprise',async t=>{
+ const f=await fixture(t),uploaded=await diagramUpload.POST(uploadRequest());assert.equal(uploaded.status,201);const {id}=await uploaded.json();assert.match(id,/^diagram_/);
+ assert.equal((await (await diagramUpload.POST(uploadRequest())).json()).id,id);assert.equal(f.bucket.objects.size,1);
+ const get=()=>diagramGet.GET(new Request(origin+'/api/diagram-assets/'+id),params(id));
+ assert.equal((await get()).status,200);assert.equal((await get()).headers.get('cache-control'),'private, no-store');
+ globalThis.__enterpriseUser=null;assert.equal((await get()).status,401);
+ const second=await setup.setupWorkspace(f.owner,mutation(),{mode:'demo',name:'Other diagrams'},true);globalThis.__enterpriseUser={...f.owner,workspaceId:second.workspace.id};assert.equal((await get()).status,404);
+ globalThis.__enterpriseUser=f.owner;f.db.prepare("UPDATE members SET role='agent' WHERE tenant_id=?").run(f.tenant);assert.equal((await diagramUpload.POST(uploadRequest())).status,403);
+});
+test('reference writes enforce model/year binding and reject foreign assets and executable uploads',async t=>{
+ const f=await fixture(t),{id}=await (await diagramUpload.POST(uploadRequest())).json();
+ const reference={make:'Yamaha',model:'MT-07',bodyType:'motorcycle',generation:'2025',variant:'Standard',yearFrom:2025,yearTo:2026,source:'Licensed QA',reviewer:'QA',reviewed:false,sheets:[{view:'left',assetId:id}],zones:[]};
+ const input={...templateInput,diagramProfile:{...templateInput.diagramProfile,detailVersion:2,reference}};
+ assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',input))).status,200);
+ assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',{...input,model:'MT-09'}))).status,422);
+ const ctx=await dbServices.context(f.owner);await assert.rejects(()=>diagramService.validateDiagramReference(ctx,{...input,year:2024}),e=>e.code==='DIAGRAM_MODEL_MISMATCH');
+ const second=await setup.setupWorkspace(f.owner,mutation(),{mode:'demo',name:'Other refs'},true);globalThis.__enterpriseUser={...f.owner,workspaceId:second.workspace.id};assert.equal((await templateRoute.POST(jsonRequest('/api/vehicle-templates',input))).status,404);
+ assert.equal((await diagramUpload.POST(uploadRequest({bytes:Buffer.from('<svg onload="alert(1)"/>'),mime:'image/svg+xml'}))).status,422);
+});
+test('diagram upload removes its object when a concurrent role revocation prevents commit',async t=>{
+ const f=await fixture(t);f.bucket.onPut=()=>f.db.prepare("UPDATE members SET role='viewer' WHERE tenant_id=?").run(f.tenant);
+ assert.equal((await diagramUpload.POST(uploadRequest())).status,409);assert.equal(f.bucket.objects.size,0);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM vehicle_diagram_assets').get().n,0);
+});
+test('clients read only reference sheets in their granted inspections and revocation is rechecked after storage reads',async t=>{
+ const f=await fixture(t),{id}=await (await diagramUpload.POST(uploadRequest())).json(),grantId=await grant(f);
+ globalThis.__enterpriseUser=client;const get=()=>diagramGet.GET(new Request(origin+'/api/diagram-assets/'+id),params(id));assert.equal((await get()).status,404);
+ const row=f.db.prepare('SELECT * FROM inspections WHERE rental_id=? LIMIT 1').get(f.rental.id);
+ insert(f.db,'inspections',{...row,id:'inspection_reference_qa',inspection_data:JSON.stringify({diagramProfile:{reference:{sheets:[{view:'left',assetId:id}]}}})});
+ assert.equal((await get()).status,200);
+ f.bucket.onGet=()=>f.db.prepare('UPDATE client_access SET revoked_at=? WHERE id=?').run(new Date().toISOString(),grantId);
+ assert.equal((await get()).status,409);assert.equal((await get()).status,404);
+});
 
 test('model templates persist with optimistic versions, safe payloads and repeatable requests',async t=>{
   await fixture(t);const request=jsonRequest('/api/vehicle-templates',templateInput);const first=await templateRoute.POST(request.clone());assert.equal(first.status,200);const {id}=await first.json();assert.equal((await (await templateRoute.POST(request.clone())).json()).id,id);

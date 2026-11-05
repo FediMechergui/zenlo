@@ -18,7 +18,7 @@ try{
   const make=dialog.getByRole('combobox',{name:/^Marque/});await make.fill('Toyota');await dialog.getByRole('option',{name:'Toyota',exact:true}).click();
   const model=dialog.getByRole('combobox',{name:/^Modèle/});await model.fill('Hilux');await dialog.getByRole('option',{name:'Hilux',exact:true}).click();
   assert.equal(await dialog.locator('[name="make"]').inputValue(),'Toyota');assert.equal(await dialog.locator('[name="model"]').inputValue(),'Hilux');assert.equal(await dialog.locator('[name="bodyType"]').inputValue(),'pickup');
-  assert.equal(await dialog.locator('.vehicle-view svg').count(),4);
+  assert.equal(await dialog.locator('.vehicle-view svg').count(),8);
   await page.screenshot({path:'outputs/vehicle-catalog-desktop.png',fullPage:false});pass('searchable make/model picker selects model and correct body type');
   await dialog.locator('.vehicle-diagram').scrollIntoViewIfNeeded();await page.screenshot({path:'outputs/vehicle-four-views-desktop.png',fullPage:false});
   await make.fill('Zenlo QA Custom');await make.press('Enter');assert.equal(await dialog.locator('[name="make"]').inputValue(),'Zenlo QA Custom');

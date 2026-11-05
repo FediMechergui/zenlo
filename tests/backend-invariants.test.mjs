@@ -36,7 +36,7 @@ const emitted = mkdtempSync(join(tmpdir(), 'zenlo-service-qa-'));
 mkdirSync(join(emitted, 'server'));
 mkdirSync(join(emitted, 'lib'));
 writeFileSync(join(emitted, 'cloudflare.mjs'), 'export const env = new Proxy({}, { get(_target, key) { return globalThis.__zenloBackendQaEnvironment?.[key]; } });');
-for (const name of ['server/domain', 'server/db', 'server/validation', 'server/rentals', 'server/finances', 'server/operations', 'server/enterprise', 'server/read', 'server/setup', 'lib/inspection']) {
+for (const name of ['server/domain', 'server/db', 'server/validation', 'server/rentals', 'server/finances', 'server/diagram-assets', 'server/operations', 'server/enterprise', 'server/read', 'server/setup', 'lib/inspection']) {
   const source = readFileSync(join(root, `${name}.ts`), 'utf8');
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, verbatimModuleSyntax: false } }).outputText;
   const resolved = js.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (_match, quote, specifier) => {
