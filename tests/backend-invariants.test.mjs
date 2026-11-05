@@ -34,9 +34,10 @@ function removeOwnTemporaryDirectory(folder, prefix) {
 // business decisions, validation, SQL, transaction guards and audit writes remain real.
 const emitted = mkdtempSync(join(tmpdir(), 'zenlo-service-qa-'));
 mkdirSync(join(emitted, 'server'));
+mkdirSync(join(emitted, 'lib'));
 writeFileSync(join(emitted, 'cloudflare.mjs'), 'export const env = new Proxy({}, { get(_target, key) { return globalThis.__zenloBackendQaEnvironment?.[key]; } });');
-for (const name of ['domain', 'db', 'validation', 'rentals', 'finances', 'operations']) {
-  const source = readFileSync(join(root, 'server', `${name}.ts`), 'utf8');
+for (const name of ['server/domain', 'server/db', 'server/validation', 'server/rentals', 'server/finances', 'server/operations', 'server/enterprise', 'server/read', 'server/setup', 'lib/inspection']) {
+  const source = readFileSync(join(root, `${name}.ts`), 'utf8');
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, verbatimModuleSyntax: false } }).outputText;
   const resolved = js.replace(/\bfrom\s+(['"])([^'"]+)\1/g, (_match, quote, specifier) => {
     let destination = specifier;
@@ -45,7 +46,7 @@ for (const name of ['domain', 'db', 'validation', 'rentals', 'finances', 'operat
     else destination = import.meta.resolve(specifier);
     return `from ${quote}${destination}${quote}`;
   });
-  writeFileSync(join(emitted, 'server', `${name}.mjs`), resolved);
+  writeFileSync(join(emitted, `${name}.mjs`), resolved);
 }
 const domain = await import(pathToFileURL(join(emitted, 'server', 'domain.mjs')).href);
 const rentalServices = await import(pathToFileURL(join(emitted, 'server', 'rentals.mjs')).href);
@@ -53,6 +54,10 @@ const financeServices = await import(pathToFileURL(join(emitted, 'server', 'fina
 const operationServices = await import(pathToFileURL(join(emitted, 'server', 'operations.mjs')).href);
 const dbServices = await import(pathToFileURL(join(emitted, 'server', 'db.mjs')).href);
 const validation = await import(pathToFileURL(join(emitted, 'server', 'validation.mjs')).href);
+const enterpriseServices = await import(pathToFileURL(join(emitted, 'server', 'enterprise.mjs')).href);
+const inspectionServices = await import(pathToFileURL(join(emitted, 'lib', 'inspection.mjs')).href);
+const readServices = await import(pathToFileURL(join(emitted, 'server', 'read.mjs')).href);
+const setupServices = await import(pathToFileURL(join(emitted, 'server', 'setup.mjs')).href);
 after(() => removeOwnTemporaryDirectory(emitted, 'zenlo-service-qa-'));
 
 class PreparedD1 {
@@ -640,3 +645,185 @@ for (const additional of [0, 10000]) {
     assert.equal(result.total, 132000 + additional); // One day, 2 TND levy, original options and return additions; QA zero tax.
   });
 }
+
+test('one authenticated identity can hold distinct roles in isolated companies', async t => {
+  const { db }=fixture(t),{ctx}=serviceContext(db);
+  insert(db,'members',{id:'second-member',tenant_id:'t2',user_id:ctx.user.userId,email:ctx.user.email,name:'QA actor',role:'mechanic',created_at:createdAt});
+  assert.equal((await dbServices.context(ctx.user,'t1')).role,'owner');
+  assert.equal((await dbServices.context(ctx.user,'t2')).role,'mechanic');
+  assert.equal(await dbServices.context(ctx.user,'foreign-company'),null);
+  assert.equal((await dbServices.availableWorkspaces(ctx.user)).length,2);
+  await assert.rejects(operationServices.patchVehicle(await dbServices.context(ctx.user,'t2'),mutation(),'v1',{expectedVersion:1,color:'Black'}),{code:'FORBIDDEN'});
+});
+
+test('supplier access and expense references are scoped to the selected company', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);
+  const supplier=await enterpriseServices.createSupplier(ctx,mutation(),{name:'QA supplier',email:'supplier@example.test'});
+  const other={...ctx,workspace:{...ctx.workspace,id:'t2'}};
+  await assert.rejects(operationServices.createExpense(other,mutation(),{vehicleId:'v2',category:'Repair',supplierId:supplier.id,amount:1000,date:'2026-01-01'}),{code:'NOT_FOUND'});
+  assert.throws(()=>insert(db,'expenses',{id:'bad-scope',tenant_id:'t2',vehicle_id:'v2',category:'Repair',supplier:'',supplier_id:supplier.id,amount:1000,date:'2026-01-01',note:'',created_at:createdAt}),/INVALID_EXPENSE_LINK/);
+});
+
+test('concurrent supplier settlements cannot exceed an expense and do not affect rental cash', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);
+  const expense=await operationServices.createExpense(ctx,mutation(),{category:'Assurance',amount:100000,date:'2026-01-01'});
+  const input={amount:70000,method:'bank',reference:'QA settled transfer',date:'2026-01-02'};
+  const outcomes=await Promise.allSettled([enterpriseServices.payExpense(ctx,mutation(),expense.id,input),enterpriseServices.payExpense(ctx,mutation(),expense.id,input)]);
+  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
+  assert.equal(db.prepare('SELECT SUM(amount) amount FROM expense_payments').get().amount,70000);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM payments').get().n,0);
+  assert.throws(()=>db.prepare('UPDATE expense_payments SET amount=1').run(),/IMMUTABLE_EXPENSE_PAYMENT/);
+  assert.throws(()=>db.prepare('DELETE FROM expenses').run(),/IMMUTABLE_EXPENSE/);
+});
+
+test('inactive suppliers and stale supplier edits cannot enter new financial records', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);
+  const supplier=await enterpriseServices.createSupplier(ctx,mutation(),{name:'QA supplier'});
+  await enterpriseServices.patchSupplier(ctx,mutation(),supplier.id,{expectedVersion:1,active:false});
+  await assert.rejects(enterpriseServices.patchSupplier(ctx,mutation(),supplier.id,{expectedVersion:1,name:'Race'}),{code:'STALE_VERSION'});
+  await assert.rejects(operationServices.createExpense(ctx,mutation(),{category:'Repair',supplierId:supplier.id,amount:1000,date:'2026-01-01'}),{code:'SUPPLIER_INACTIVE'});
+});
+
+test('completed maintenance creates one linked charge and replay cannot double book it', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);
+  const created=await operationServices.createMaintenance(ctx,mutation(),{vehicleId:'v1',title:'QA service',startAt,endAt,cost:90000,supplier:'QA workshop',odometer:10000});
+  await operationServices.completeMaintenance(ctx,mutation(),created.id,{cost:95000,reference:'QA bill'});
+  const charge=db.prepare('SELECT amount,maintenance_id FROM expenses').get();assert.equal(charge.amount,95000);assert.equal(charge.maintenance_id,created.id);
+  await assert.rejects(operationServices.completeMaintenance(ctx,mutation(),created.id,{}),{code:'INVALID_TRANSITION'});
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM expenses').get().n,1);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM vehicle_blocks').get().n,0);
+});
+
+test('recurring maintenance obligation creates next due date with calendar clamping and one charge', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);
+  const obligation=await enterpriseServices.createObligation(ctx,mutation(),{vehicleId:'v1',title:'Oil service',kind:'service',dueDate:'2026-01-31',dueKm:10000,recurrenceMonths:1,recurrenceKm:10000});
+  const completed=await enterpriseServices.completeObligation(ctx,mutation(),obligation.id,{expectedVersion:1,completedDate:'2026-01-31',odometer:10000,cost:30000});
+  const next=db.prepare('SELECT due_date,due_km,status FROM obligations WHERE id=?').get(completed.nextId);
+  assert.deepEqual({...next},{due_date:'2026-02-28',due_km:20000,status:'pending'});
+  assert.equal(db.prepare('SELECT amount FROM expenses WHERE obligation_id=?').get(obligation.id).amount,30000);
+  await assert.rejects(enterpriseServices.completeObligation(ctx,mutation(),obligation.id,{expectedVersion:1,completedDate:'2026-01-31',odometer:10000,cost:30000}),{code:'INVALID_TRANSITION'});
+});
+
+test('renewed insurance validity and its next reminder are committed together', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);
+  const obligation=await enterpriseServices.createObligation(ctx,mutation(),{vehicleId:'v1',title:'Insurance',kind:'insurance',dueDate:'2026-01-31'});
+  await assert.rejects(enterpriseServices.completeObligation(ctx,mutation(),obligation.id,{expectedVersion:1,completedDate:'2026-01-31',odometer:10000,cost:30000}),{code:'COVERAGE_DATE_REQUIRED'});
+  const completed=await enterpriseServices.completeObligation(ctx,mutation(),obligation.id,{expectedVersion:1,completedDate:'2026-01-31',odometer:10000,cost:30000,nextDueDate:'2099-01-31'});
+  assert.equal(db.prepare("SELECT insurance_until FROM vehicles WHERE id='v1'").get().insurance_until,'2099-01-31');assert.ok(completed.nextId);
+});
+
+test('issued quotes freeze agency branding and accepted quote does not silently reserve capacity', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);
+  ctx.workspace.settings.fax='QA fax';const rentalId=rental(db,{daily_levy_rate:2000,daily_levy:10000,total:510000});
+  const quote=await enterpriseServices.createQuote(ctx,mutation(),{rentalId,validUntil:'2099-01-31',notes:'QA terms'});
+  const original=db.prepare('SELECT snapshot,number FROM quotes WHERE id=?').get(quote.id);
+  assert.equal(JSON.parse(original.snapshot).settings.fax,'QA fax');assert.match(original.number,/DEV-\d{4}-000001/);
+  await enterpriseServices.quoteAction(ctx,mutation(),quote.id,{action:'accept',expectedVersion:1});
+  assert.equal(db.prepare('SELECT status FROM quotes WHERE id=?').get(quote.id).status,'accepted');
+  assert.equal(db.prepare('SELECT status FROM rentals WHERE id=?').get(rentalId).status,'draft');assert.equal(db.prepare('SELECT count(*) n FROM vehicle_blocks').get().n,0);
+  assert.throws(()=>db.prepare('UPDATE quotes SET total=1 WHERE id=?').run(quote.id),/IMMUTABLE_QUOTE/);
+});
+
+test('quote acceptance rejects a reservation change racing the recorded decision', async t => {
+  const {db}=fixture(t),{ctx,adapter}=serviceContext(db),rentalId=rental(db,{daily_levy_rate:2000,daily_levy:10000,total:510000});
+  const quote=await enterpriseServices.createQuote(ctx,mutation(),{rentalId,validUntil:'2099-01-31'});
+  adapter.beforeBatch=database=>database.prepare('UPDATE rentals SET version=version+1 WHERE id=?').run(rentalId);
+  await assert.rejects(enterpriseServices.quoteAction(ctx,mutation(),quote.id,{action:'accept',expectedVersion:1}),/operation_precondition/);
+  assert.equal(db.prepare('SELECT status FROM quotes WHERE id=?').get(quote.id).status,'issued');
+});
+
+function identityProof(db,kind,customerId='c1') { const fileId=id('file');insert(db,'agency_files',{id:fileId,tenant_id:'t1',customer_id:customerId,expense_id:null,kind,object_key:`qa/${fileId}`,mime:'image/png',size:100,hash:fileId,label:'QA synthetic proof',verified_at:createdAt,verified_by:'qa-user',revoked_at:null,created_at:createdAt});return fileId; }
+function completeHealth(){const data=inspectionServices.makeInspectionData('hatchback');for(const key of Object.keys(data.checks))data.checks[key]='pass';return data;}
+async function liveReservation(db,ctx){ctx.workspace.mode='live';db.prepare("UPDATE workspaces SET mode='live' WHERE id='t1'").run();db.prepare("UPDATE customers SET license_number='QA-PERMIT' WHERE id='c1'").run();const time=Date.now();return rentalServices.createRental(ctx,mutation(),rentalInput({startAt:new Date(time-3600000).toISOString(),endAt:new Date(time+23*3600000).toISOString(),depositRequired:0}));}
+const inspected=(inspectionData,odometer=10000)=>({odometer,fuelPercent:100,condition:'QA checked',damages:'',customerAccepted:true,inspectionData});
+
+test('live departure requires reviewed health checks and verified identity and licence copies', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db),created=await liveReservation(db,ctx);
+  await assert.rejects(rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected(undefined)}),{code:'HEALTH_CHECK_REQUIRED'});
+  await assert.rejects(rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected(inspectionServices.makeInspectionData())}),{code:'HEALTH_CHECK_INCOMPLETE'});
+  await assert.rejects(rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected(completeHealth())}),{code:'IDENTITY_DOCUMENTS_REQUIRED'});
+  identityProof(db,'identity_front');identityProof(db,'license_front');
+  await rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected(completeHealth())});
+  assert.equal(db.prepare('SELECT status FROM rentals WHERE id=?').get(created.id).status,'active');
+});
+
+test('proof revocation racing handover rolls back departure and its inspection', async t => {
+  const {db}=fixture(t),{ctx,adapter}=serviceContext(db),created=await liveReservation(db,ctx);
+  identityProof(db,'identity_front');const fileId=identityProof(db,'license_front');
+  adapter.beforeBatch=database=>database.prepare('UPDATE agency_files SET revoked_at=? WHERE id=?').run(createdAt,fileId);
+  await assert.rejects(rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected(completeHealth())}),/operation_precondition/);
+  assert.equal(db.prepare('SELECT status FROM rentals WHERE id=?').get(created.id).status,'confirmed');assert.equal(db.prepare('SELECT count(*) n FROM inspections').get().n,0);
+});
+
+test('changing licence identity invalidates previous verification while a notes edit preserves it', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);const fileId=identityProof(db,'license_front');identityProof(db,'identity_front');
+  await operationServices.patchCustomer(ctx,mutation(),'c1',{notes:'QA update'});assert.ok(db.prepare('SELECT verified_at FROM agency_files WHERE id=?').get(fileId).verified_at);
+  await operationServices.patchCustomer(ctx,mutation(),'c1',{licenseNumber:'CHANGED'});assert.equal(db.prepare('SELECT verified_at FROM agency_files WHERE id=?').get(fileId).verified_at,null);
+  assert.ok(db.prepare("SELECT verified_at FROM agency_files WHERE kind='identity_front'").get().verified_at);
+});
+
+test('failed return health check immobilizes the car without preventing the return', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db),created=await liveReservation(db,ctx);identityProof(db,'identity_front');identityProof(db,'license_front');
+  await rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected(completeHealth())});
+  const data=completeHealth();data.checks.brakes='fail';await rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkin',expectedVersion:2,inspection:inspected(data,10010)});
+  assert.equal(db.prepare("SELECT status FROM vehicles WHERE id='v1'").get().status,'maintenance');assert.equal(db.prepare('SELECT status FROM rentals WHERE id=?').get(created.id).status,'returned');
+});
+
+test('unresolved departure damage cannot be removed from the returned condition record', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db),created=await liveReservation(db,ctx);identityProof(db,'identity_front');identityProof(db,'license_front');
+  const data=completeHealth();data.marks=[{id:'prior-mark',view:'front',x:50,y:50,type:'scratch',severity:'light',note:'QA scratch',status:'existing'}];
+  await rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkout',expectedVersion:1,inspection:inspected(data)});
+  await assert.rejects(rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkin',expectedVersion:2,inspection:inspected(completeHealth(),10010)}),{code:'DAMAGE_HISTORY_REQUIRED'});
+  const repair=structuredClone(data);repair.marks[0].status='repaired';await rentalServices.rentalAction(ctx,mutation(),created.id,{action:'checkin',expectedVersion:2,inspection:inspected(repair,10010)});
+  assert.equal(db.prepare('SELECT count(*) n FROM inspections').get().n,2);
+});
+
+test('mechanic can schedule maintenance but cannot write payments or agency settings', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db,{role:'mechanic'});
+  await operationServices.createMaintenance(ctx,mutation(),{vehicleId:'v1',title:'QA service',startAt,endAt,cost:0,odometer:10000});
+  await assert.rejects(operationServices.createExpense(ctx,mutation(),{category:'Repair',amount:1000,date:'2026-01-01'}),{code:'FORBIDDEN'});
+  await assert.rejects(operationServices.patchSettings(ctx,mutation(),{name:'No'}),{code:'FORBIDDEN'});
+});
+
+test('workspace reads redact driver identity and financial movements from mechanic access', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db,{role:'mechanic'});
+  db.prepare("UPDATE customers SET license_number='QA-sensitive',address='Private QA address',email='qa-customer@example.test' WHERE id='c1'").run();const rentalId=rental(db);payment(db,rentalId,{amount:10000});
+  const data=await readServices.getWorkspaceData(ctx.user,'t1');
+  assert.equal(data.customers[0].licenseNumber,'');assert.equal(data.customers[0].email,'');assert.equal(data.customers[0].address,'');assert.deepEqual(data.payments,[]);assert.deepEqual(data.expenses,[]);assert.equal(data.rentals[0].total,0);
+});
+
+test('creating an additional company selects scoped data and idempotently preserves that company', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db),request=mutation();
+  const created=await setupServices.setupWorkspace(ctx.user,request,{mode:'live',name:'QA second enterprise'},true);
+  assert.notEqual(created.workspace.id,'t1');assert.equal(created.workspace.name,'QA second enterprise');assert.deepEqual(created.vehicles,[]);assert.equal(created.availableWorkspaces.length,2);
+  const again=await setupServices.setupWorkspace(ctx.user,request,{mode:'live',name:'QA second enterprise'},true);assert.equal(again.workspace.id,created.workspace.id);
+  await assert.rejects(setupServices.setupWorkspace(ctx.user,{...request,requestHash:'changed'},{mode:'live',name:'Other company'},true),{code:'IDEMPOTENCY_MISMATCH'});
+});
+
+test('removing an enterprise member immediately denies future selected-company access', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);const added=await operationServices.createMember(ctx,mutation(),{email:'employee@example.test',name:'QA employee',role:'agent'});const employee={userId:'employee-user',email:'employee@example.test',displayName:'QA employee'};
+  assert.equal((await dbServices.context(employee,'t1')).role,'agent');await operationServices.revokeMember(ctx,mutation(),added.id,{});assert.equal(await dbServices.context(employee,'t1'),null);
+  await assert.rejects(operationServices.revokeMember(ctx,mutation(),ctx.memberId,{}),{code:'OWNER_PROTECTED'});
+});
+
+test('workspace data is withheld when its membership role changes during the reads', async t => {
+  const {db}=fixture(t),{ctx,adapter}=serviceContext(db);
+  adapter.beforeBatch=database=>database.prepare("UPDATE members SET role='viewer' WHERE id=?").run(ctx.memberId);
+  await assert.rejects(readServices.getWorkspaceData(ctx.user,'t1'),/operation_precondition/);
+});
+
+test('live quote issuance requires validated fiscal terms and refuses stale quoted rates', async t => {
+  const {db}=fixture(t),{ctx}=serviceContext(db);ctx.workspace.mode='live';const rentalId=rental(db,{daily_levy_rate:2000,daily_levy:10000,total:510000});ctx.workspace.settings.fiscalValidated=false;
+  await assert.rejects(enterpriseServices.createQuote(ctx,mutation(),{rentalId,validUntil:'2099-01-31'}),{code:'FISCAL_VALIDATION_REQUIRED'});
+  ctx.workspace.settings.fiscalValidated=true;ctx.workspace.settings.taxRateBps=1900;
+  await assert.rejects(enterpriseServices.createQuote(ctx,mutation(),{rentalId,validUntil:'2099-01-31'}),{code:'QUOTE_FISCAL_CHANGED'});
+  assert.equal(db.prepare('SELECT count(*) n FROM quotes').get().n,0);
+});
+
+test('live supplier contacts require hosting approval and recheck that approval atomically', async t => {
+  const {db}=fixture(t),{ctx,adapter}=serviceContext(db);ctx.workspace.mode='live';ctx.workspace.settings.hostingValidated=false;
+  await assert.rejects(enterpriseServices.createSupplier(ctx,mutation(),{name:'QA supplier',contact:'QA person',email:'qa@example.test'}),{code:'HOSTING_VALIDATION_REQUIRED'});
+  ctx.workspace.settings.hostingValidated=true;adapter.beforeBatch=database=>database.prepare('UPDATE workspaces SET version=version+1 WHERE id=?').run(ctx.workspace.id);
+  await assert.rejects(enterpriseServices.createSupplier(ctx,mutation(),{name:'QA supplier',contact:'QA person',email:'qa@example.test'}),/operation_precondition/);
+  assert.equal(db.prepare('SELECT count(*) n FROM suppliers').get().n,0);
+});

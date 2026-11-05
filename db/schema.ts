@@ -3,17 +3,18 @@ import { sqliteTable, text, integer, index, uniqueIndex, check, foreignKey } fro
 
 const identity = () => ({ id: text('id').primaryKey(), tenantId: text('tenant_id').notNull(), createdAt: text('created_at').notNull() });
 export const workspaces = sqliteTable('workspaces', {
-  id: text('id').primaryKey(), ownerId: text('owner_id').notNull().unique(), name: text('name').notNull(),
+  id: text('id').primaryKey(), ownerId: text('owner_id').notNull(), name: text('name').notNull(),
   mode: text('mode', { enum: ['demo','live'] }).notNull(), settings: text('settings').notNull(), version: integer('version').notNull().default(1), createdAt: text('created_at').notNull(),
-});
+},t=>[index('workspaces_owner').on(t.ownerId)]);
 export const members = sqliteTable('members', {
-  ...identity(), userId: text('user_id').unique(), email: text('email').notNull().unique(), name: text('name').notNull(), role: text('role').notNull(),
-}, t => [index('members_tenant').on(t.tenantId), foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]})]);
+  ...identity(), userId: text('user_id'), email: text('email').notNull(), name: text('name').notNull(), role: text('role').notNull(),
+}, t => [index('members_tenant').on(t.tenantId),uniqueIndex('members_tenant_user').on(t.tenantId,t.userId),uniqueIndex('members_tenant_email').on(t.tenantId,t.email), foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]})]);
 export const vehicles = sqliteTable('vehicles', {
   ...identity(), registration: text('registration').notNull(), make: text('make').notNull(), model: text('model').notNull(), category: text('category').notNull(),
   year: integer('year').notNull(), transmission: text('transmission').notNull(), fuel: text('fuel').notNull(), seats: integer('seats').notNull(), odometer: integer('odometer').notNull(),
   status: text('status').notNull().default('ready'), dailyRate: integer('daily_rate').notNull(), deposit: integer('deposit').notNull(),
   insuranceUntil: text('insurance_until').notNull(), inspectionUntil: text('inspection_until').notNull(), color: text('color').notNull(), version: integer('version').notNull().default(1),
+  bodyType:text('body_type').notNull().default('hatchback'),vin:text('vin').notNull().default(''),
 }, t => [uniqueIndex('vehicles_tenant_id').on(t.tenantId,t.id),uniqueIndex('vehicles_registration').on(t.tenantId,t.registration),check('vehicle_money',sql`${t.dailyRate} >= 0 AND ${t.deposit} >= 0 AND ${t.odometer} >= 0`),foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]})]);
 export const customers = sqliteTable('customers', {
   ...identity(), type: text('type').notNull(), name: text('name').notNull(), email: text('email').notNull(), phone: text('phone').notNull(), country: text('country').notNull(),
@@ -29,6 +30,7 @@ export const assignments = sqliteTable('assignments', {
 }, t=>[index('assignments_rental').on(t.tenantId,t.rentalId),foreignKey({columns:[t.tenantId,t.rentalId],foreignColumns:[rentals.tenantId,rentals.id]}),foreignKey({columns:[t.tenantId,t.vehicleId],foreignColumns:[vehicles.tenantId,vehicles.id]})]);
 export const inspections = sqliteTable('inspections', {
   ...identity(),rentalId:text('rental_id').notNull(),vehicleId:text('vehicle_id').notNull(),type:text('type').notNull(),odometer:integer('odometer').notNull(),fuelPercent:integer('fuel_percent').notNull(),condition:text('condition').notNull(),damages:text('damages').notNull(),customerAccepted:integer('customer_accepted',{mode:'boolean'}).notNull(),
+  inspectionData:text('inspection_data').notNull().default(''),
 }, t=>[foreignKey({columns:[t.tenantId,t.rentalId],foreignColumns:[rentals.tenantId,rentals.id]}),foreignKey({columns:[t.tenantId,t.vehicleId],foreignColumns:[vehicles.tenantId,vehicles.id]}),check('inspection_values',sql`${t.odometer}>=0 AND ${t.fuelPercent} BETWEEN 0 AND 100`)]);
 export const maintenance = sqliteTable('maintenance', {
   ...identity(),vehicleId:text('vehicle_id').notNull(),title:text('title').notNull(),startAt:text('start_at').notNull(),endAt:text('end_at').notNull(),status:text('status').notNull(),cost:integer('cost').notNull(),supplier:text('supplier').notNull(),odometer:integer('odometer').notNull(),notes:text('notes').notNull(),
@@ -50,7 +52,8 @@ export const payments = sqliteTable('payments', {
 },t=>[index('payments_rental').on(t.tenantId,t.rentalId),check('payment_positive',sql`${t.amount}>0`),foreignKey({columns:[t.tenantId,t.rentalId],foreignColumns:[rentals.tenantId,rentals.id]}),foreignKey({columns:[t.tenantId,t.invoiceId],foreignColumns:[invoices.tenantId,invoices.id]}),foreignKey({columns:[t.tenantId,t.cashSessionId],foreignColumns:[cashSessions.tenantId,cashSessions.id]})]);
 export const expenses = sqliteTable('expenses', {
   ...identity(),vehicleId:text('vehicle_id'),category:text('category').notNull(),supplier:text('supplier').notNull(),amount:integer('amount').notNull(),date:text('date').notNull(),note:text('note').notNull(),
-},t=>[foreignKey({columns:[t.tenantId,t.vehicleId],foreignColumns:[vehicles.tenantId,vehicles.id]}),foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]}),check('expense_positive',sql`${t.amount}>0`)]);
+  supplierId:text('supplier_id'),reference:text('reference').notNull().default(''),dueDate:text('due_date').notNull().default(''),maintenanceId:text('maintenance_id'),obligationId:text('obligation_id'),
+},t=>[uniqueIndex('expenses_tenant_id').on(t.tenantId,t.id),uniqueIndex('expenses_maintenance').on(t.tenantId,t.maintenanceId),uniqueIndex('expenses_obligation').on(t.tenantId,t.obligationId),foreignKey({columns:[t.tenantId,t.vehicleId],foreignColumns:[vehicles.tenantId,vehicles.id]}),foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]}),check('expense_positive',sql`${t.amount}>0`)]);
 export const audit = sqliteTable('audit', {
   ...identity(),actor:text('actor').notNull(),action:text('action').notNull(),entityType:text('entity_type').notNull(),entityId:text('entity_id').notNull(),detail:text('detail').notNull(),
 },t=>[index('audit_tenant_time').on(t.tenantId,t.createdAt),foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]})]);
@@ -65,3 +68,25 @@ export const documentSnapshots = sqliteTable('document_snapshots', {
 export const attachments = sqliteTable('attachments', {
   ...identity(),rentalId:text('rental_id').notNull(),inspectionId:text('inspection_id'),objectKey:text('object_key').notNull(),mime:text('mime').notNull(),size:integer('size').notNull(),hash:text('hash').notNull(),label:text('label').notNull(),
 },t=>[uniqueIndex('attachment_hash').on(t.tenantId,t.rentalId,t.hash),foreignKey({columns:[t.tenantId,t.rentalId],foreignColumns:[rentals.tenantId,rentals.id]})]);
+
+export const suppliers = sqliteTable('suppliers', {
+  ...identity(),name:text('name').notNull(),contact:text('contact').notNull().default(''),email:text('email').notNull().default(''),phone:text('phone').notNull().default(''),address:text('address').notNull().default(''),taxId:text('tax_id').notNull().default(''),category:text('category').notNull().default(''),notes:text('notes').notNull().default(''),active:integer('active',{mode:'boolean'}).notNull().default(true),version:integer('version').notNull().default(1),
+},t=>[uniqueIndex('suppliers_tenant_id').on(t.tenantId,t.id),index('suppliers_name').on(t.tenantId,t.name),foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]})]);
+export const expensePayments = sqliteTable('expense_payments', {
+  ...identity(),expenseId:text('expense_id').notNull(),amount:integer('amount').notNull(),method:text('method').notNull(),reference:text('reference').notNull(),date:text('date').notNull(),note:text('note').notNull().default(''),
+},t=>[index('expense_payments_expense').on(t.tenantId,t.expenseId),foreignKey({columns:[t.tenantId,t.expenseId],foreignColumns:[expenses.tenantId,expenses.id]}),check('expense_payment_positive',sql`${t.amount}>0`),check('expense_payment_method',sql`${t.method} IN ('bank','card')`)]);
+export const obligations = sqliteTable('obligations', {
+  ...identity(),vehicleId:text('vehicle_id').notNull(),title:text('title').notNull(),kind:text('kind').notNull(),dueDate:text('due_date').notNull().default(''),dueKm:integer('due_km'),reminderDays:integer('reminder_days').notNull().default(30),recurrenceMonths:integer('recurrence_months').notNull().default(0),recurrenceKm:integer('recurrence_km').notNull().default(0),supplierId:text('supplier_id'),estimatedCost:integer('estimated_cost').notNull().default(0),notes:text('notes').notNull().default(''),status:text('status').notNull().default('pending'),completedAt:text('completed_at'),completionDate:text('completion_date'),completedOdometer:integer('completed_odometer'),actualCost:integer('actual_cost'),nextId:text('next_id'),version:integer('version').notNull().default(1),
+},t=>[uniqueIndex('obligations_tenant_id').on(t.tenantId,t.id),index('obligations_due').on(t.tenantId,t.status,t.dueDate),foreignKey({columns:[t.tenantId,t.vehicleId],foreignColumns:[vehicles.tenantId,vehicles.id]}),foreignKey({columns:[t.tenantId,t.supplierId],foreignColumns:[suppliers.tenantId,suppliers.id]}),check('obligation_due',sql`${t.dueDate}<>'' OR ${t.dueKm} IS NOT NULL`),check('obligation_nonnegative',sql`${t.estimatedCost}>=0 AND (${t.dueKm} IS NULL OR ${t.dueKm}>=0) AND ${t.recurrenceMonths}>=0 AND ${t.recurrenceKm}>=0`)]);
+export const quotes = sqliteTable('quotes', {
+  ...identity(),rentalId:text('rental_id').notNull(),customerId:text('customer_id').notNull(),number:text('number').notNull(),validUntil:text('valid_until').notNull(),status:text('status').notNull().default('issued'),total:integer('total').notNull(),notes:text('notes').notNull().default(''),version:integer('version').notNull().default(1),decidedAt:text('decided_at'),snapshot:text('snapshot').notNull(),
+},t=>[uniqueIndex('quotes_tenant_id').on(t.tenantId,t.id),uniqueIndex('quotes_number').on(t.tenantId,t.number),foreignKey({columns:[t.tenantId,t.rentalId],foreignColumns:[rentals.tenantId,rentals.id]}),foreignKey({columns:[t.tenantId,t.customerId],foreignColumns:[customers.tenantId,customers.id]}),check('quote_nonnegative',sql`${t.total}>=0`)]);
+export const agencyFiles = sqliteTable('agency_files', {
+  ...identity(),customerId:text('customer_id'),expenseId:text('expense_id'),kind:text('kind').notNull(),objectKey:text('object_key').notNull(),mime:text('mime').notNull(),size:integer('size').notNull(),hash:text('hash').notNull(),label:text('label').notNull(),verifiedAt:text('verified_at'),verifiedBy:text('verified_by'),revokedAt:text('revoked_at'),
+},t=>[uniqueIndex('agency_files_tenant_id').on(t.tenantId,t.id),index('agency_files_customer').on(t.tenantId,t.customerId),foreignKey({columns:[t.tenantId],foreignColumns:[workspaces.id]}),foreignKey({columns:[t.tenantId,t.customerId],foreignColumns:[customers.tenantId,customers.id]}),foreignKey({columns:[t.tenantId,t.expenseId],foreignColumns:[expenses.tenantId,expenses.id]}),check('agency_file_size',sql`${t.size}>0 AND ${t.size}<=5242880`)]);
+export const clientAccess = sqliteTable('client_access', {
+  ...identity(),rentalId:text('rental_id').notNull(),email:text('email').notNull(),name:text('name').notNull().default(''),expiresAt:text('expires_at').notNull(),revokedAt:text('revoked_at'),
+},t=>[uniqueIndex('client_access_current').on(t.tenantId,t.rentalId,t.email).where(sql`${t.revokedAt} IS NULL`),index('client_access_email').on(t.email),foreignKey({columns:[t.tenantId,t.rentalId],foreignColumns:[rentals.tenantId,rentals.id]})]);
+export const clientAcknowledgments = sqliteTable('client_acknowledgments', {
+  ...identity(),rentalId:text('rental_id').notNull(),userId:text('user_id').notNull(),email:text('email').notNull(),inspectionHash:text('inspection_hash').notNull(),
+},t=>[uniqueIndex('client_acknowledgment_current').on(t.tenantId,t.rentalId,t.userId,t.inspectionHash),foreignKey({columns:[t.tenantId,t.rentalId],foreignColumns:[rentals.tenantId,rentals.id]})]);

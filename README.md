@@ -1,14 +1,14 @@
 # Zenlo · Gestion de location automobile
 
-Application française pour un pilote d'agence tunisienne de 10 à 50 véhicules : parcours de location persistant, cautions séparées des revenus, documents versionnés et protections transactionnelles testées.
+Application française de gestion d'entreprises de location automobile en Tunisie : exploitation, documents personnalisés, contrôles du véhicule, achats, trésorerie et espace client. L'interface est calibrée pour des agences de 10 à 50 véhicules ; plusieurs entreprises peuvent être gérées avec des rôles distincts.
 
-**Statut : pilote fonctionnel à recetter avec l'agence.** La [revue de préparation](docs/REVIEW.md) détaille les preuves, limites et extensions restantes. Ce projet ne constitue pas une certification fiscale ni une intégration TTN opérationnelle.
+**Version étendue du 5 novembre 2026.** Les parcours livrés sont persistants et testés. Les [notes de livraison](docs/RELEASE-V2.md) et la [revue de préparation](docs/REVIEW.md) distinguent les fonctions exécutables des intégrations et validations encore nécessaires. Ce projet ne constitue pas une certification fiscale ni une intégration TTN opérationnelle.
 
 ## Commencer
 
 Se connecter au site privé puis choisir explicitement une démonstration ou une agence vide. La démonstration comprend 16 véhicules, 10 clients, des locations, échéances, interventions et mouvements fictifs. Les documents portent une mention de démonstration.
 
-Le choix s'applique à cet espace. Une démonstration ne se transforme pas automatiquement en agence réelle et ses données ne sont pas effacées silencieusement. Préparer un déploiement de production distinct pour le lancement.
+Le choix s'applique à l'entreprise créée. Le sélecteur d'entreprise permet d'en créer une autre, vide ou de démonstration. Une démonstration ne se transforme pas en entreprise réelle et ses données ne sont pas effacées silencieusement. Les identités, membres et opérations sont isolés par entreprise ; les sites de recette et de production doivent rester distincts.
 
 Parcours : tableau de bord → planning → réservation → caution → départ avec inspection → retour → facture → règlement et restitution. Les prolongations, remplacements et avoirs conservent l'historique.
 
@@ -19,16 +19,20 @@ Parcours : tableau de bord → planning → réservation → caution → départ
 | Tableau de bord | Départs, retours, retards, documents, soldes et cautions issus des données persistantes. |
 | Planning | Calendrier hebdomadaire, locations et immobilisations ; contrôle des chevauchements en base. |
 | Locations | Brouillon, confirmation, annulation, départ, prolongation, remplacement avec deux inspections et retour. |
-| Parc et clients | Création, modification, dates documentaires, compteur, permis, adresse, recherche et historique. |
-| Inspections | Kilométrage, carburant, dommages et accord consigné par l'agent ; photos privées JPEG/PNG et empreintes. |
-| Documents | Contrats versionnés et imprimables, factures et relevés de caution. |
+| Parc et clients | Catalogue local de 85 marques et 860 modèles, enrichissement NHTSA, saisie libre, carrosserie, VIN, dates documentaires, compteur et dossier conducteur. |
+| Inspections | Quatre vues annotables, 11 contrôles, dommages hérités ou résolus, compteur et carburant, photos privées ; chaque véhicule remplacé conserve son segment kilométrique. |
+| Justificatifs | Copies recto/verso CIN et permis, stockage privé, vérification par responsable, invalidation lors d'un changement d'identité et archivage tracé. |
+| Documents | Devis numérotés et décisions, contrats versionnés, BL de remise, états des lieux, factures, avoirs et cautions ; impression/PDF au profil de l'agence. |
+| Profil agence | Logo, raison sociale, adresse, téléphone, fax, e-mail, site, MF, RNE, forme juridique, capital, banque/RIB, couleur et pied de page. |
 | Finance | Paiements enregistrés, dépôts et restitutions, remboursements, factures, avoirs intégraux, caisse et écarts. |
-| Maintenance | Blocage du planning, coûts et prestataires ; remise en service explicite. |
-| Rapports | Indicateurs, exports CSV et rapprochement du prélèvement journalier par mois de facturation. |
+| Achats | Fiches fournisseurs, charges, échéances, reçus privés, règlements partiels bancaires/carte et soldes protégés contre les trop-payés. |
+| Maintenance | Blocage du planning ; clôture générant une seule dépense liée ; échéances assurance, visite, vignette, entretien, pneus et autres, récurrentes par date/km. |
+| Rapports | Filtres par période, activité, finances, parc et charges imprimables/PDF ; exports CSV et rapprochement du prélèvement journalier. |
+| Espace client | Dossiers explicitement autorisés par e-mail, durée d'accès, documents, constats et photos, kilomètres conclus et confirmation de lecture ; révocation immédiate aux requêtes suivantes. |
 | Migration | Modèles CSV véhicules/clients, prévisualisation, erreurs par ligne, doublons et reprise idempotente. |
-| Accès | Authentification Sites, isolation des agences, rôles serveur, audit et fichiers privés. |
+| Accès | Entreprises isolées, sélecteur d'entreprise, propriétaire, responsable, agent, comptable, mécanicien et lecteur ; contrôles serveur et audit. |
 
-Les paiements bancaires/carte sont enregistrés après confirmation externe ; Zenlo ne débite pas une carte et ne transmet pas de virement. Les dépenses saisies sont des charges, pas des sorties automatiques de caisse.
+Les paiements bancaires/carte sont enregistrés après confirmation externe ; Zenlo ne débite pas une carte et ne transmet pas de virement. Les dépenses sont des charges avec règlements fournisseurs distincts. Ces règlements ne sont pas des sorties de la caisse espèces des locations. Les schémas de constat varient par carrosserie : ils ne constituent pas des plans techniques exacts de chaque constructeur.
 
 ## Paramètres tunisiens
 
@@ -65,7 +69,10 @@ Appliquer les migrations locales une seule fois, dans l'ordre, avant le premier 
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_mighty_stellaris.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_loose_blockbuster.sql
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0002_maintenance_overrun.sql
-npm run dev -- --hostname 127.0.0.1
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0003_known_phantom_reporter.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0004_brief_cobalt_man.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0005_chemical_nebula.sql
+npm run dev -- --host 127.0.0.1
 ```
 
 L'authentification de développement est limitée au loopback : `/signin-with-chatgpt?return_to=/`. Elle n'est pas incluse dans le build de production. Les bases locale et hébergée sont distinctes.
@@ -74,7 +81,9 @@ Serveur local actif et Chromium Playwright disponible :
 
 ```powershell
 npm run test:http
+node tests/http-v2.integration.mjs
 npm run test:browser
+node tests/vehicle-browser.integration.mjs
 ```
 
 Les tests HTTP créent exclusivement des données fictives locales et refusent une URL distante. Captures et résultats : `outputs/`, ignoré par Git. La suite métier utilise les vraies migrations et services avec un adaptateur SQLite transactionnel ; elle ne mesure pas la charge ou la disponibilité distante.
@@ -85,4 +94,4 @@ Les migrations appliquées sont immuables. Ajouter une migration pour chaque év
 
 Réunir les validations de [REVIEW.md](docs/REVIEW.md) puis suivre [OPERATIONS.md](docs/OPERATIONS.md). Les tests ne remplacent pas l'approbation de l'agence, de son comptable ou de ses conseils.
 
-Le périmètre complet du PDF reste une feuille de route : multisuccursales, réservation par catégorie, conducteurs multiples, comptabilité générale, achats et sinistres avancés, tarification saisonnière, arabe/RTL, chèques compensés, préautorisations et connecteurs externes. Ils ne sont pas présentés comme livrés par ce pilote.
+Le périmètre complet du PDF reste plus large : succursales avec transferts internes, réservation par capacité de catégorie, conducteurs multiples, comptabilité générale, achats avec commandes/réceptions et avoirs fournisseurs, sinistres avancés, tarification saisonnière, arabe/RTL, chèques compensés, préautorisations et connecteurs externes. Ces extensions ne sont pas présentées comme livrées.

@@ -32,7 +32,7 @@ const worker = {
       secured.headers.set('Strict-Transport-Security', 'max-age=31536000');
       secured.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self' https://chatgpt.com https://*.chatgpt.com https://chat.openai.com");
     }
-    if (new URL(request.url).pathname.startsWith('/api/') || new URL(request.url).pathname.startsWith('/documents/')) {
+    if (new URL(request.url).pathname.startsWith('/api/') || new URL(request.url).pathname.startsWith('/documents/') || new URL(request.url).pathname.startsWith('/client')) {
       secured.headers.set('Cache-Control', 'private, no-store');
     }
     return secured;

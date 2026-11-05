@@ -5,9 +5,10 @@ import { BusinessError,csvRows } from '../../../server/domain';
 import { vehicleSchema,customerSchema } from '../../../server/validation';
 import { parseCsv } from '../../../lib/csv';
 import { parseMillimes } from '../../../lib/format';
+import { inferBodyType } from '../../../lib/vehicle-catalog';
 
 export const dynamic='force-dynamic';
-const columns={vehicles:['registration','make','model','category','year','transmission','fuel','seats','odometer','dailyRateTND','depositTND','insuranceUntil','inspectionUntil','color'],customers:['type','name','email','phone','address','country','licenseNumber','licenseUntil','taxId','notes']};
+const columns={vehicles:['registration','make','model','category','year','transmission','fuel','seats','odometer','dailyRateTND','depositTND','insuranceUntil','inspectionUntil','color','bodyType','vin'],customers:['type','name','email','phone','address','country','licenseNumber','licenseUntil','taxId','notes']};
 const schema=z.object({kind:z.enum(['vehicles','customers']),csv:z.string().max(750000),apply:z.boolean().default(false)}).strict();
 const responseHeaders={'Cache-Control':'private, no-store'};
 async function getContext(){const user=await getChatGPTUser();if(!user)throw new BusinessError('UNAUTHENTICATED','Connectez-vous pour importer.',401);const ctx=await context(user);if(!ctx)throw new BusinessError('NOT_FOUND','Agence introuvable.',404);authorize(ctx,['owner','manager']);return ctx;}
@@ -34,7 +35,7 @@ export async function POST(request:Request){
     if(input.apply){const replay=await previous(ctx,mutation);if(replay)return Response.json(replay,{headers:responseHeaders});}
     let raw:Record<string,string>[];try{raw=parseCsv(input.csv);}catch(error){throw new BusinessError('INVALID_CSV',error instanceof Error?error.message:'Le fichier CSV est invalide.');}
     if(raw.length>100)throw new BusinessError('TOO_MANY_ROWS','Import limité à 100 lignes.');
-    const required=input.kind==='vehicles'?columns.vehicles.slice(0,-1):['name','phone'];
+    const required=input.kind==='vehicles'?columns.vehicles.filter(k=>!['color','bodyType','vin'].includes(k)):['name','phone'];
     const keys=Object.keys(raw[0]);const missing=required.filter(k=>!keys.includes(k));if(missing.length)throw new BusinessError('MISSING_COLUMNS',`Colonnes manquantes : ${missing.join(', ')}.`);
     const unknown=keys.filter(k=>!(columns[input.kind] as string[]).includes(k));if(unknown.length)throw new BusinessError('UNKNOWN_COLUMNS',`Colonnes non reconnues : ${unknown.join(', ')}.`);
     const errors:{line:number;message:string}[]=[];const duplicates:{line:number;label:string}[]=[];const accepted:{line:number;id:string;data:Record<string,unknown>}[]=[];const seen=new Set<string>();
@@ -43,7 +44,7 @@ export async function POST(request:Request){
         const row=raw[i];let data:Record<string,unknown>;let identity:string;
         if(input.kind==='vehicles'){
           const {dailyRateTND,depositTND,...rest}=row;
-          data=vehicleSchema.parse({...rest,year:Number(row.year),seats:Number(row.seats),odometer:Number(row.odometer),dailyRate:parseMillimes(dailyRateTND),deposit:parseMillimes(depositTND)});
+          data=vehicleSchema.parse({...rest,bodyType:row.bodyType||inferBodyType(row.make,row.model,row.category),year:Number(row.year),seats:Number(row.seats),odometer:Number(row.odometer),dailyRate:parseMillimes(dailyRateTND),deposit:parseMillimes(depositTND)});
           identity=String(data.registration);
         }else{data=customerSchema.parse(row);identity=`${String(data.name).toLocaleLowerCase('fr-TN')}|${String(data.phone).replace(/\s/g,'')}`;}
         const existing=input.kind==='vehicles'?await first('SELECT id FROM vehicles WHERE tenant_id=? AND registration=?',ctx.workspace.id,data.registration):await first('SELECT id FROM customers WHERE tenant_id=? AND lower(name)=lower(?) AND replace(phone,\' \',\'\')=?',ctx.workspace.id,data.name,String(data.phone).replace(/\s/g,''));

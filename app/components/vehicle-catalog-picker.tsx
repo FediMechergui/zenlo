@@ -1,0 +1,35 @@
+'use client';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { catalogModels, inferBodyType, LOCAL_MAKES, normalizeCatalogName, type CatalogModel } from '@/lib/vehicle-catalog';
+import type { BodyType } from '@/lib/inspection';
+import './vehicle-experience.css';
+
+type Option={value:string;detail?:string};
+function SearchableSelect({label,value,options,onChange,placeholder,disabled=false,loading=false}:{label:string;value:string;options:Option[];onChange:(value:string)=>void;placeholder:string;disabled?:boolean;loading?:boolean}){
+  const uid=useId(),root=useRef<HTMLDivElement>(null),inputRef=useRef<HTMLInputElement>(null);
+  const [open,setOpen]=useState(false),[query,setQuery]=useState(value),[active,setActive]=useState(0);
+  useEffect(()=>setQuery(value),[value]);
+  useEffect(()=>{const close=(event:PointerEvent)=>{if(root.current&&!root.current.contains(event.target as Node)){setOpen(false);setQuery(value);}};document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close);},[value]);
+  const matches=options.filter(o=>normalizeCatalogName(o.value).includes(normalizeCatalogName(query))).slice(0,70);
+  const trimmed=query.trim();
+  const custom=trimmed&&!options.some(o=>normalizeCatalogName(o.value)===normalizeCatalogName(trimmed))?{value:trimmed,detail:'Utiliser cette saisie'}:null;
+  const entries=custom?[...matches,custom]:matches;
+  function choose(option:Option){onChange(option.value);setQuery(option.value);setOpen(false);setActive(0);inputRef.current?.focus();}
+  function onKey(event:KeyboardEvent<HTMLInputElement>){
+    if(event.key==='Escape'){if(open){event.preventDefault();event.stopPropagation();setOpen(false);setQuery(value);}return;}
+    if(event.key==='ArrowDown'){event.preventDefault();setOpen(true);setActive(i=>open?Math.min(i+1,Math.max(0,entries.length-1)):0);}
+    else if(event.key==='ArrowUp'){event.preventDefault();setOpen(true);setActive(i=>open?Math.max(0,i-1):Math.max(0,entries.length-1));}
+    else if(event.key==='Enter'&&open){event.preventDefault();if(entries[active])choose(entries[active]);}
+    else if(event.key==='Tab'){setOpen(false);setQuery(value);}
+  }
+  useEffect(()=>{if(open)root.current?.querySelector(`[data-option-index="${active}"]`)?.scrollIntoView({block:'nearest'});},[active,open]);
+  return <div className="vehicle-combobox" ref={root}><label htmlFor={uid}>{label}<span aria-hidden="true"> *</span></label><div className="vehicle-combobox-control"><input ref={inputRef} id={uid} role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls={`${uid}-options`} aria-activedescendant={open&&entries[active]?`${uid}-option-${active}`:undefined} autoComplete="off" value={open?query:value} disabled={disabled} placeholder={placeholder} onFocus={()=>{setOpen(true);setQuery('');setActive(0);}} onChange={e=>{setQuery(e.target.value);setActive(0);setOpen(true);}} onKeyDown={onKey}/><button type="button" tabIndex={-1} disabled={disabled} aria-label={`Choisir ${label.toLowerCase()}`} onClick={()=>{setOpen(!open);setQuery('');setActive(0);inputRef.current?.focus();}}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5"/></svg></button></div>{open&&!disabled&&<div className="vehicle-combobox-popup"><div className="vehicle-combobox-meta">{loading?'Mise à jour du catalogue…':`${entries.length}${matches.length===70?'+':''} suggestions`}</div><div id={`${uid}-options`} role="listbox" aria-label={label} className="vehicle-combobox-options">{entries.map((option,i)=><button id={`${uid}-option-${i}`} data-option-index={i} type="button" role="option" aria-selected={option.value===value} className={i===active?'is-active':''} tabIndex={-1} key={`${option.value}-${i}`} onPointerDown={e=>e.preventDefault()} onPointerMove={()=>setActive(i)} onClick={()=>choose(option)}><span>{option.value}</span>{option.detail&&<small>{option.detail}</small>}{option.value===value&&<span aria-hidden="true">✓</span>}</button>)}{!entries.length&&<p>Saisissez un nom pour l’ajouter.</p>}</div></div>}</div>;
+}
+
+export function VehicleCatalogPicker({make,model,bodyType,onChange,disabled=false}:{make:string;model:string;bodyType?:BodyType;onChange:(value:{make:string;model:string;bodyType:BodyType})=>void;disabled?:boolean}){
+  const [makes,setMakes]=useState<string[]>(LOCAL_MAKES),[models,setModels]=useState<CatalogModel[]>(()=>catalogModels(make)),[loadingMakes,setLoadingMakes]=useState(false),[loadingModels,setLoadingModels]=useState(false),[offline,setOffline]=useState(false);
+  useEffect(()=>{if(disabled)return;const controller=new AbortController();setLoadingMakes(true);fetch('/api/catalog',{signal:controller.signal,credentials:'same-origin'}).then(r=>{if(!r.ok)throw new Error('catalog');return r.json();}).then(raw=>{const result=raw as {makes?:string[];remoteAvailable?:boolean};if(result.makes)setMakes(result.makes);if(!result.remoteAvailable)setOffline(true);}).catch(()=>{if(!controller.signal.aborted)setOffline(true);}).finally(()=>{if(!controller.signal.aborted)setLoadingMakes(false);});return()=>controller.abort();},[disabled]);
+  useEffect(()=>{setModels(catalogModels(make));if(!make||disabled){setLoadingModels(false);return;}const controller=new AbortController();setLoadingModels(true);fetch(`/api/catalog?make=${encodeURIComponent(make)}`,{signal:controller.signal,credentials:'same-origin'}).then(r=>{if(!r.ok)throw new Error('catalog');return r.json();}).then(raw=>{const result=raw as {models?:CatalogModel[];remoteAvailable?:boolean};if(result.models)setModels(result.models);if(!result.remoteAvailable)setOffline(true);}).catch(()=>{if(!controller.signal.aborted)setOffline(true);}).finally(()=>{if(!controller.signal.aborted)setLoadingModels(false);});return()=>controller.abort();},[make,disabled]);
+  return <div className="vehicle-catalog-picker"><div className="vehicle-catalog-fields"><SearchableSelect label="Marque" value={make} options={makes.map(value=>({value}))} placeholder="Rechercher une marque" disabled={disabled} loading={loadingMakes} onChange={next=>onChange({make:next,model:'',bodyType:bodyType||'hatchback'})}/><SearchableSelect label="Modèle" value={model} options={models.map(m=>({value:m.name}))} placeholder={make?'Rechercher un modèle':'Choisissez d’abord la marque'} disabled={disabled||!make} loading={loadingModels} onChange={next=>onChange({make,model:next,bodyType:models.find(m=>m.name===next)?.bodyType||inferBodyType(make,next)})}/></div><p className="vehicle-catalog-note">{offline?'Catalogue local disponible. ':''}Marques et modèles locaux, enrichis par <a href="https://vpic.nhtsa.dot.gov/api/" target="_blank" rel="noreferrer">NHTSA vPIC</a>. Un modèle absent peut être saisi librement.</p></div>;
+}
+export default VehicleCatalogPicker;

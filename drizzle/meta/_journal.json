@@ -22,6 +22,27 @@
       "when": 1793803913858,
       "tag": "0002_maintenance_overrun",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793868079916,
+      "tag": "0003_known_phantom_reporter",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793868208856,
+      "tag": "0004_brief_cobalt_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793868882615,
+      "tag": "0005_chemical_nebula",
+      "breakpoints": true
     }
   ]
 }

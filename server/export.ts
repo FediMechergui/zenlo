@@ -10,6 +10,11 @@ export async function exportCsv(ctx:Context,url:URL){
     payments:{table:'payments',keys:['id','rentalId','invoiceId','kind','method','amount','reference','note','createdAt']},
     invoices:{table:'invoices',keys:['id','number','rentalId','customerId','status','subtotal','dailyLevy','tax','stamp','total','taxRateBps','externalStatus','issuedAt']},
     audit:{table:'audit',keys:['id','actor','action','entityType','entityId','detail','createdAt']},
+    suppliers:{table:'suppliers',keys:['id','name','contact','email','phone','address','taxId','category','active']},
+    expenses:{table:'expenses',keys:['id','vehicleId','category','supplierId','supplier','reference','amount','date','dueDate','maintenanceId','obligationId','note']},
+    'expense-payments':{table:'expense_payments',keys:['id','expenseId','amount','method','reference','date','note']},
+    obligations:{table:'obligations',keys:['id','vehicleId','title','kind','dueDate','dueKm','status','completedAt','completedOdometer','actualCost','nextId']},
+    quotes:{table:'quotes',keys:['id','number','rentalId','customerId','status','validUntil','total','decidedAt','createdAt']},
   };
   if(kind==='audit')authorize(ctx,['owner','manager']);
   let csv:string;

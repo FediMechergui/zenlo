@@ -15,7 +15,10 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
     "test:http": "node tests/http.integration.mjs",
-    "test:browser": "node tests/browser.integration.mjs"
+    "test:browser": "node tests/browser-v2.integration.mjs",
+    "test:http:enterprise": "node tests/http-v2.integration.mjs",
+    "test:browser:vehicles": "node tests/vehicle-browser.integration.mjs",
+    "test:browser:workflows": "node tests/browser-workflows-v2.integration.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

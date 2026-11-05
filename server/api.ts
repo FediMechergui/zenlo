@@ -1,13 +1,15 @@
 import { ZodError } from 'zod';
 import { getChatGPTUser } from '../app/chatgpt-auth';
-import { context,hash,previous } from './db';
+import { context,hash,previous,availableWorkspaces } from './db';
 import { BusinessError,requireCondition } from './domain';
 import { getWorkspaceData } from './read';
 import { setupWorkspace } from './setup';
 import { createRental,rentalAction } from './rentals';
 import { createPayment,createInvoice,issueInvoice,creditInvoice,cashAction } from './finances';
-import { createVehicle,patchVehicle,createCustomer,patchCustomer,createMaintenance,completeMaintenance,createExpense,patchSettings,createMember,patchMember } from './operations';
+import { createVehicle,patchVehicle,createCustomer,patchCustomer,createMaintenance,completeMaintenance,createExpense,patchSettings,createMember,patchMember,revokeMember } from './operations';
 import { exportCsv } from './export';
+import { createSupplier,patchSupplier,payExpense,createObligation,completeObligation,createQuote,quoteAction } from './enterprise';
+import { z } from 'zod';
 
 const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 async function requestBody(request:Request){
@@ -34,7 +36,8 @@ const sqlErrors:Record<string,[string,string,number]>={
   'vehicles.tenant_id, vehicles.registration':['DUPLICATE_REGISTRATION','Cette immatriculation existe déjà dans le parc.',409],
   'invoices.tenant_id, invoices.rental_id':['INVOICE_EXISTS','Une facture existe déjà pour cette location.',409],
   'cash_sessions.tenant_id':['CASH_ALREADY_OPEN','Une session de caisse est déjà ouverte.',409],
-  'members.email':['MEMBER_EXISTS','Cette adresse possède déjà un accès à une agence.',409],
+  EXPENSE_OVERPAYMENT:['EXPENSE_OVERPAYMENT','Le règlement dépasse le solde restant de la dépense.',422],
+  'members.tenant_id, members.email':['MEMBER_EXISTS','Cette adresse possède déjà un accès à cette agence.',409],
 };
 export function apiError(error:unknown){
   const correlationId=crypto.randomUUID();if(error instanceof ZodError){const fields:Record<string,string>={};for(const issue of error.issues)fields[issue.path.join('.')]=issue.message;return json({error:{code:'VALIDATION_ERROR',message:'Vérifiez les champs renseignés.',fields,correlationId}},422);}
@@ -49,7 +52,10 @@ export async function handleApi(request:Request){
   try{
     const user=await getChatGPTUser();requireCondition(user,'UNAUTHENTICATED','Connectez-vous pour accéder à votre agence.',401);
     const url=new URL(request.url),path=url.pathname.replace(/^\/api\/?/,'').split('/').filter(Boolean),method=request.method;
-    if(method==='GET'&&path.length===1&&path[0]==='workspace')return json(await getWorkspaceData(user)||{needsSetup:true,user:{id:user.userId,name:user.displayName,email:user.email}});
+    if(method==='GET'&&path.length===1&&path[0]==='workspace'){
+      let data=await getWorkspaceData(user);if(!data){const access=await availableWorkspaces(user);if(access.length){data=await getWorkspaceData(user,access[0].id);const response=json(data);response.headers.set('Set-Cookie',`zenlo_workspace=${encodeURIComponent(access[0].id)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${url.protocol==='https:'?'; Secure':''}`);return response;}}
+      return json(data||{needsSetup:true,user:{id:user.userId,name:user.displayName,email:user.email}});
+    }
     const ctx=await context(user);
     if(method==='GET'&&path.length===1&&path[0]==='export'){requireCondition(ctx,'SETUP_REQUIRED','Configurez votre agence avant de continuer.',409);return exportCsv(ctx,url);}
     requireCondition(['POST','PATCH'].includes(method),'METHOD_NOT_ALLOWED','Méthode indisponible.',405);
@@ -57,7 +63,8 @@ export async function handleApi(request:Request){
     const key=request.headers.get('idempotency-key')||'';requireCondition(/^[A-Za-z0-9_-]{16,128}$/.test(key),'IDEMPOTENCY_REQUIRED','Une clé de reprise est requise pour cette opération.',400);
     const raw=await requestBody(request);let body:unknown;try{body=JSON.parse(raw);}catch{throw new BusinessError('INVALID_JSON','Le contenu JSON est invalide.',400);}
     const mutation={key,requestHash:await hash(`${method}:${url.pathname}:${raw}`)};
-    if(method==='POST'&&path.length===1&&path[0]==='setup')return json(await setupWorkspace(user,mutation,body));
+    if(method==='POST'&&path.length===1&&['setup','workspaces'].includes(path[0])){const data=await setupWorkspace(user,mutation,body,path[0]==='workspaces');const response=json(data);if(data)response.headers.set('Set-Cookie',`zenlo_workspace=${encodeURIComponent(data.workspace.id)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${url.protocol==='https:'?'; Secure':''}`);return response;}
+    if(method==='POST'&&path.join('/')==='workspaces/select'){const {workspaceId}=z.object({workspaceId:z.string().min(1).max(180)}).strict().parse(body);const selected=await context(user,workspaceId);requireCondition(selected,'FORBIDDEN','Vous ne disposez pas d’un accès à cette entreprise.',403);const response=json({id:workspaceId});response.headers.set('Set-Cookie',`zenlo_workspace=${encodeURIComponent(workspaceId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${url.protocol==='https:'?'; Secure':''}`);return response;}
     requireCondition(ctx,'SETUP_REQUIRED','Configurez votre agence avant de continuer.',409);const replay=await previous(ctx,mutation);if(replay)return json(replay);
     let result:unknown;
     if(method==='POST'&&path.length===1&&path[0]==='vehicles')result=await createVehicle(ctx,mutation,body);
@@ -74,9 +81,17 @@ export async function handleApi(request:Request){
     else if(method==='POST'&&path.length===1&&path[0]==='maintenance')result=await createMaintenance(ctx,mutation,body);
     else if(method==='POST'&&path.length===3&&path[0]==='maintenance'&&path[2]==='complete')result=await completeMaintenance(ctx,mutation,path[1],body);
     else if(method==='POST'&&path.length===1&&path[0]==='expenses')result=await createExpense(ctx,mutation,body);
+    else if(method==='POST'&&path.length===3&&path[0]==='expenses'&&path[2]==='pay')result=await payExpense(ctx,mutation,path[1],body);
+    else if(method==='POST'&&path.length===1&&path[0]==='suppliers')result=await createSupplier(ctx,mutation,body);
+    else if(method==='PATCH'&&path.length===2&&path[0]==='suppliers')result=await patchSupplier(ctx,mutation,path[1],body);
+    else if(method==='POST'&&path.length===1&&path[0]==='obligations')result=await createObligation(ctx,mutation,body);
+    else if(method==='POST'&&path.length===3&&path[0]==='obligations'&&path[2]==='complete')result=await completeObligation(ctx,mutation,path[1],body);
+    else if(method==='POST'&&path.length===1&&path[0]==='quotes')result=await createQuote(ctx,mutation,body);
+    else if(method==='POST'&&path.length===3&&path[0]==='quotes'&&path[2]==='action')result=await quoteAction(ctx,mutation,path[1],body);
     else if(method==='PATCH'&&path.length===1&&path[0]==='settings')result=await patchSettings(ctx,mutation,body);
     else if(method==='POST'&&path.length===1&&path[0]==='members')result=await createMember(ctx,mutation,body);
     else if(method==='PATCH'&&path.length===2&&path[0]==='members')result=await patchMember(ctx,mutation,path[1],body);
+    else if(method==='POST'&&path.length===3&&path[0]==='members'&&path[2]==='revoke')result=await revokeMember(ctx,mutation,path[1],body);
     else throw new BusinessError('NOT_FOUND','Cette opération est introuvable.',404);
     return json(result);
   }catch(error){return apiError(error);}

@@ -8,7 +8,9 @@ Documenter les règles commerciales, justificatifs, fractions de journée et par
 
 ## Accès
 
-L'appartenance dans Zenlo et l'accès privé au site doivent tous deux autoriser la personne. Tester les rôles agent, comptable et lecteur avant ouverture à l'équipe. L'ajout d'un membre dans l'ERP ne déclenche aucune invitation de plateforme.
+L'appartenance dans Zenlo et l'accès privé au site doivent tous deux autoriser la personne. Tester propriétaire, responsable, agent, comptable, mécanicien et lecteur avant ouverture à l'équipe, avec des appartenances différentes dans deux entreprises. L'ajout d'un membre dans l'ERP ne déclenche aucune invitation de plateforme.
+
+Pour le portail client, autoriser l'adresse du compte authentifié dans un dossier, définir sa date d'expiration et vérifier aussi le partage Sites. Tester ce compte sur `/client`, les documents, photos et kilomètres, puis révoquer le droit et vérifier les requêtes suivantes. Ne pas transmettre les copies CIN/permis au portail. Vérifier que la modification d'identité invalide les vérifications de pièces précédentes.
 
 Un paiement est une écriture d'un mouvement confirmé à l'extérieur, pas une instruction bancaire. Conserver sa référence. Un chèque ne peut pas être enregistré comme définitivement encaissé tant que le workflow de compensation n'est pas développé.
 
@@ -20,8 +22,8 @@ Avant production, obtenir les moyens d'administration D1/R2 ou un dispositif éq
 
 1. Exporter la base et un inventaire des objets avec empreintes vers un emplacement privé autorisé.
 2. Restaurer dans un environnement distinct avec les mêmes versions applicatives et migrations.
-3. Vérifier agences, membres, parc, locations ouvertes, documents, photos et clés d'idempotence.
-4. Rapprocher paiements, avoirs, cautions et caisse ; les sommes doivent être identiques.
+3. Vérifier entreprises, membres, parc, locations ouvertes, documents, photos, pièces conducteur, fournisseurs, échéances, accès clients et clés d'idempotence.
+4. Rapprocher paiements, avoirs, cautions, caisse, charges et règlements fournisseurs ; les sommes doivent être identiques.
 5. Mesurer délais et perte réelle de données avant de contractualiser la continuité.
 
 Aucune restauration destructive n'est automatisée ici. Un retour arrière après paiements réels exige un rapprochement des événements postérieurs à la sauvegarde.

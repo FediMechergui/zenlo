@@ -1,5 +1,7 @@
 # Zenlo — revue indépendante du noyau métier
 
+**Mise à jour du 5 novembre 2026 :** la livraison étendue ajoute multi-entreprise, fournisseur/charges/règlements, obligations récurrentes, devis/BL, pièces conducteur vérifiées, schémas d'inspection et portail client. Les [notes de livraison V2](RELEASE-V2.md) décrivent le périmètre actuel et les nouvelles suites de tests. La section de preuve ci-dessous conserve la revue initiale datée du 4 novembre ; son décompte de 49 tests est historique.
+
 Date de revue : 4 novembre 2026. Résultat constaté : **49 tests réussis, 0 échec** sur les migrations livrées `0000`, `0001` et `0002` et sur les modules métier présents lors de cette revue.
 
 Le livrable constitue un pilote exécutable avec un noyau transactionnel vérifié. Cette revue ne certifie ni la conformité juridique de l'agence ni l'aptitude de l'ensemble des parcours à une exploitation sans accompagnement. Les essais HTTP, navigateur, authentification réelle, stockage distant et déploiement sont distincts de cette suite.
@@ -45,12 +47,12 @@ Ces fonctions ne doivent pas être présentées comme livrées ou certifiées :
 - Connexion contractuelle et technique à TTN/El Fatoora : envoi, validation du schéma officiel, signature requise, référence d'acceptation, rejet, reprise, rapprochement et archivage réglementaire. Une facture imprimable et un export CSV ne prouvent pas son acceptation électronique.
 - Cycle complet du chèque reçu, remis, compensé, rejeté et régularisé. Les chèques sont refusés comme encaissements définitifs dans le noyau actuel.
 - Préautorisation bancaire du dépôt, capture, libération et rapprochement automatique avec un prestataire de paiement. Les mouvements actuels sont des écritures métier enregistrées par l'opérateur.
-- Comptabilité générale, écritures en partie double, clôture fiscale, immobilisations, achats et dettes fournisseurs, paie et rapprochement bancaire. Une dépense enregistrée n'est pas un décaissement fournisseur intégré au journal de caisse.
+- Comptabilité générale, écritures en partie double, clôture fiscale, immobilisations, commandes/réceptions, avoirs fournisseurs, paie et rapprochement bancaire. Les fournisseurs, charges, dettes et règlements partiels banque/carte sont désormais livrés ; ils ne constituent pas un grand livre ni une intégration à la caisse espèces.
 - Tarification saisonnière et commerciale avancée, taxes par ligne, commissions apporteurs, retenues à la source, devises multiples et migration exhaustive d'un historique comptable.
 - Matrice exhaustive des documents d'exploitation automobile, franchises et exclusions d'assurance, conducteur supplémentaire, sinistre et recouvrement contentieux. Les champs d'assurance et de visite technique ne couvrent pas tous ces dossiers.
 - Signature électronique qualifiée et preuve d'identité du signataire. Une acceptation saisie par l'agent et une version documentaire conservée ne suffisent pas à qualifier juridiquement la signature.
 - Purge programmée, gel probatoire, exercice complet des droits des personnes et export de toutes les preuves de suppression. Le paramètre de conservation exprime une politique ; il ne prouve pas son exécution automatique.
-- Exploitation hors ligne avec résolution des conflits, télémetrie/GPS, portail autonome du locataire et portail de réservation publique.
+- Exploitation hors ligne avec résolution des conflits, télémétrie/GPS et portail de réservation publique. L'espace locataire authentifié sur invitation de dossier est désormais livré ; l'autorisation du site privé reste nécessaire.
 
 ## Conditions d'ouverture à des opérations réelles
 

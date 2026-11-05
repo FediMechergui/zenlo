@@ -1,6 +1,22 @@
 # Zenlo shared implementation contract
 
-All monetary amounts are safe integer millimes (1 TND = 1000). All dates are ISO UTC; date-only expiry fields YYYY-MM-DD inclusive in Africa/Tunis. UI French. Rental duration is ceil elapsed hours / 24 (minimum 1). Pilot one agency, 10–50 cars. API JSON, no real data seeded. Types in lib/types.ts are shared and owned by root; request changes via message.
+All monetary amounts are safe integer millimes (1 TND = 1000). All dates are ISO UTC; date-only expiry fields YYYY-MM-DD inclusive in Africa/Tunis. UI French. Rental duration is ceil elapsed hours / 24 (minimum 1). Multiple isolated enterprises with distinct memberships; UI calibrated for10–50cars per agency. API JSON, no real data seeded. Shared public types are in lib/types.ts; structured condition schemas are in lib/inspection.ts.
+
+## Extended contract — 5 November 2026
+
+- POST `/api/workspaces` `{name,mode}` creates a separate enterprise; POST `/api/workspaces/select` `{workspaceId}` selects a membership-validated tenant via HttpOnly SameSite cookie. WorkspaceData includes availableWorkspaces, assignments, suppliers, expensePayments, obligations and quotes.
+- Vehicle requests accept `bodyType` and `vin`. GET `/api/catalog?make=...` supplies authenticated suggestions with bounded official NHTSA enrichment and local fallback.
+- Rental inspections accept `inspectionData` validated against lib/inspection.ts: four-view marks, severities, inherited/resolved observations and eleven checks. Real checkout/return requires all checks reviewed. Checkout refuses failed checks and missing verified driver files; a failed return immobilizes the vehicle.
+- POST/PATCH `/api/suppliers[/:id]`, POST `/api/expenses` including supplierId/reference/dueDate, POST `/api/expenses/:id/pay` `{amount,method:'bank'|'card',reference,date,note}`. External payments are recorded, never initiated by Zenlo.
+- POST `/api/obligations`, POST `/api/obligations/:id/complete`; exact fields in server/validation.ts. Completion records real costs and creates one linked expense and optional next occurrence.
+- POST `/api/quotes` `{rentalId,validUntil,notes}`; POST `/api/quotes/:id/action` `{action:'accept'|'decline'|'cancel',expectedVersion}`. Quote content/profile immutable; acceptance does not reserve a vehicle.
+- POST `/api/files` multipart file/kind/customerId?/expenseId?; JPEG/PNG only. GET `/api/files?customerId=...` lists protected metadata and a verificationFingerprint of current driver identity. POST `/api/files/:id/action` `{action:'verify',verificationFingerprint}` or `{action:'revoke'}`. GET `/api/files/:id` streams a role-protected image; clients can only obtain their agency logo, never identity copies.
+- POST `/api/client-access` `{rentalId,email,name?,expiresAt}`, GET with rentalId and POST `/:id/revoke`. GET `/api/client` returns explicitly shared dossiers for the authenticated email; POST `/api/client/:id/acknowledge` `{inspectionHash}` confirms reading of the current condition report. No invitation messages or changes to Sites sharing occur.
+- POST `/api/members/:id/revoke` removes an internal membership; owner protected. Mechanic added to existing roles. Staff/client authorization and report fingerprints are rechecked at commit/read.
+- Printable documents: `/documents/{contract|invoice|credit|quote|delivery|inspection|deposit}/{id}`, contract/delivery optionally `?version=N`; reports `/documents/report/{operations|fleet|finance|expenses}?from=YYYY-MM-DD&to=YYYY-MM-DD`.
+- AgencySettings adds email, fax, website, RNE, legal form/capital, bank/RIB, uploaded logo ID, accent/footer, quote validity days and optional required proof backs. Frozen documents retain previous branding.
+
+Earlier core endpoints below remain supported. Runtime validation is authoritative; unsupported keys are rejected instead of silently ignored.
 
 ## HTTP contract
 

@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import type { ChatGPTUser } from '../app/chatgpt-auth';
-import type { AgencySettings, Role, Workspace } from '../lib/types';
+import type { AgencySettings, Role, Workspace, WorkspaceAccess } from '../lib/types';
 import { BusinessError, requireCondition, defaultSettings } from './domain';
 
 export const now=()=>new Date().toISOString();
@@ -9,14 +9,15 @@ export function database():D1Database{if(!env.DB)throw new BusinessError('DATABA
 export function statement(sql:string,...values:unknown[]){return database().prepare(sql).bind(...values.map(v=>typeof v==='boolean'?Number(v):v===undefined?null:v));}
 export async function all<T>(sql:string,...values:unknown[]){return (await statement(sql,...values).all<T>()).results;}
 export async function first<T>(sql:string,...values:unknown[]){return statement(sql,...values).first<T>();}
-export function camelRow<T>(raw:Record<string,unknown>):T{const out:Record<string,unknown>={};for(const [k,v] of Object.entries(raw)){if(k==='tenant_id'||k==='pricing_snapshot'||k==='snapshot'||k==='cash_session_id')continue;const key=k.replace(/_([a-z])/g,(_,letter:string)=>letter.toUpperCase());out[key]=['customerAccepted','dailyLevyTaxable'].includes(key)?!!v:v;}return out as T;}
+export function camelRow<T>(raw:Record<string,unknown>):T{const out:Record<string,unknown>={};for(const [k,v] of Object.entries(raw)){if(k==='tenant_id'||k==='pricing_snapshot'||k==='snapshot'||k==='cash_session_id')continue;const key=k.replace(/_([a-z])/g,(_,letter:string)=>letter.toUpperCase());out[key]=key==='inspectionData'?(v?JSON.parse(String(v)):null):['customerAccepted','dailyLevyTaxable','active'].includes(key)?!!v:v;}return out as T;}
 export async function rows<T>(table:string,tenantId:string,order='created_at DESC'){return (await all<Record<string,unknown>>(`SELECT * FROM ${table} WHERE tenant_id=? ORDER BY ${order}`,tenantId)).map(r=>camelRow<T>(r));}
 export async function entity<T>(table:string,tenantId:string,id:string){const r=await first<Record<string,unknown>>(`SELECT * FROM ${table} WHERE tenant_id=? AND id=?`,tenantId,id);if(!r)throw new BusinessError('NOT_FOUND','Ce dossier est introuvable ou inaccessible.',404);return camelRow<T>(r);}
-export function insert(table:string,obj:Record<string,unknown>){const entries=Object.entries(obj);const cols=entries.map(([k])=>k.replace(/[A-Z]/g,c=>'_'+c.toLowerCase()));return statement(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(()=>'?').join(',')})`,...entries.map(([,v])=>v));}
+export function insert(table:string,obj:Record<string,unknown>){const entries=Object.entries(obj);const cols=entries.map(([k])=>k.replace(/[A-Z]/g,c=>'_'+c.toLowerCase()));return statement(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(()=>'?').join(',')})`,...entries.map(([k,v])=>k==='inspectionData'?JSON.stringify(v||null):v));}
 export function update(table:string,obj:Record<string,unknown>,where:string,...values:unknown[]){const entries=Object.entries(obj);return statement(`UPDATE ${table} SET ${entries.map(([k])=>k.replace(/[A-Z]/g,c=>'_'+c.toLowerCase())+'=?').join(',')} WHERE ${where}`,...entries.map(([,v])=>v),...values);}
 export interface Context {user:ChatGPTUser;workspace:Workspace;role:Role;memberId:string;workspaceVersion:number;}
-export async function context(user:ChatGPTUser):Promise<Context|null>{
-  const member=await first<{id:string;tenant_id:string;role:Role;user_id:string|null}>('SELECT * FROM members WHERE user_id=? OR (user_id IS NULL AND email=?)',user.userId,user.email.toLowerCase());
+export async function availableWorkspaces(user:ChatGPTUser):Promise<WorkspaceAccess[]>{return all<WorkspaceAccess>("SELECT w.id,w.name,w.mode,m.role FROM members m JOIN workspaces w ON w.id=m.tenant_id WHERE m.user_id=? OR (m.user_id IS NULL AND m.email=?) ORDER BY w.created_at,w.id",user.userId,user.email.toLowerCase());}
+export async function context(user:ChatGPTUser,workspaceId:string|null|undefined=(user as ChatGPTUser & {workspaceId?:string}).workspaceId):Promise<Context|null>{
+  const member=await first<{id:string;tenant_id:string;role:Role;user_id:string|null}>(`SELECT * FROM members WHERE (user_id=? OR (user_id IS NULL AND email=?)) ${workspaceId?'AND tenant_id=?':''} ORDER BY created_at,tenant_id LIMIT 1`,user.userId,user.email.toLowerCase(),...(workspaceId?[workspaceId]:[]));
   if(!member)return null;
   // Platform-authenticated email may accept a pre-provisioned membership once. Stable ID is used thereafter.
   if(!member.user_id)await statement('UPDATE members SET user_id=? WHERE id=? AND user_id IS NULL',user.userId,member.id).run();

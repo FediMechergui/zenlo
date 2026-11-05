@@ -6,6 +6,8 @@ export type ChatGPTUser = {
   displayName: string;
   email: string;
   fullName: string | null;
+  /** An untrusted tenant selector; server/db validates membership on every request. */
+  workspaceId?: string;
 };
 
 const USER_ID_HEADER = "oai-authenticated-user-id";
@@ -36,6 +38,7 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
     displayName: fullName ?? email,
     email,
     fullName,
+    workspaceId: requestHeaders.get('cookie')?.split(';').map(value=>value.trim()).find(value=>value.startsWith('zenlo_workspace='))?.slice('zenlo_workspace='.length),
   };
 }
 

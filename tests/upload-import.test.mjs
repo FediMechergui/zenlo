@@ -13,7 +13,7 @@ after(()=>{assert.equal(dirname(resolve(emitted)),resolve(tmpdir()));assert.ok(b
 writeFileSync(join(emitted,'cloudflare.mjs'),'export const env=new Proxy({}, {get(_,key){return globalThis.__zenloUploadEnvironment?.[key]}});');
 mkdirSync(join(emitted,'app'),{recursive:true});
 writeFileSync(join(emitted,'app/chatgpt-auth.mjs'),'export async function getChatGPTUser(){return globalThis.__zenloUploadUser;}');
-const files=[...readdirSync(join(root,'server')).filter(n=>n.endsWith('.ts')).map(n=>'server/'+n),'lib/csv.ts','lib/format.ts','lib/media.ts','app/api/import/route.ts','app/api/media/route.ts'];
+const files=[...readdirSync(join(root,'server')).filter(n=>n.endsWith('.ts')).map(n=>'server/'+n),...readdirSync(join(root,'lib')).filter(n=>n.endsWith('.ts')).map(n=>'lib/'+n),'app/api/import/route.ts','app/api/media/route.ts'];
 for(const file of files){
   const output=join(emitted,file.replace(/\.ts$/,'.mjs'));mkdirSync(dirname(output),{recursive:true});
   const js=ts.transpileModule(readFileSync(join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,verbatimModuleSyntax:false}}).outputText;
