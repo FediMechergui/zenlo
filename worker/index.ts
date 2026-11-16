@@ -1,6 +1,7 @@
 import handler from "vinext/server/fetch-handler";
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
+import { applyDemoIdentity } from "./demo-identity";
 
 const worker = {
   async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
@@ -23,8 +24,16 @@ const worker = {
         },
       };
     }
+    let setDemoCookie: string | null = null;
+    if ((env as { ZENLO_DEMO_MODE?: string }).ZENLO_DEMO_MODE === "1") {
+      const demo = applyDemoIdentity(request);
+      if (demo.kind === "response") return demo.response;
+      request = demo.request;
+      setDemoCookie = demo.setCookie;
+    }
     const response = await runWithConnectorBinding(binding, () => handler.fetch(request, env, ctx));
     const secured = new Response(response.body, response);
+    if (setDemoCookie) secured.headers.append('Set-Cookie', setDemoCookie);
     secured.headers.set('X-Content-Type-Options', 'nosniff');
     secured.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     secured.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');

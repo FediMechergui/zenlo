@@ -15,15 +15,29 @@ const { d1, r2 } = hostingConfig;
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
 
+// Standalone Cloudflare deployment (e.g. the public demo sandbox). When these
+// build variables are absent, the Sites placeholders below are kept unchanged.
+const cf = {
+  workerName: process.env.ZENLO_WORKER_NAME,
+  d1Name: process.env.ZENLO_D1_NAME,
+  d1Id: process.env.ZENLO_D1_ID,
+  r2Bucket: process.env.ZENLO_R2_BUCKET,
+  demoMode: process.env.ZENLO_DEMO_MODE === "1",
+};
+
 const localBindingConfig = {
+  ...(cf.workerName ? { name: cf.workerName } : {}),
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
+  ...(cf.demoMode ? { vars: { ZENLO_DEMO_MODE: "1" } } : {}),
   d1_databases: d1
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_name: cf.d1Name ?? "site-creator-d1",
+          database_id: cf.d1Id ?? SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          // Resolved from the config file location (dist/server) by Wrangler.
+          migrations_dir: "../../drizzle",
         },
       ]
     : [],
@@ -31,7 +45,7 @@ const localBindingConfig = {
     ? [
         {
           binding: r2,
-          bucket_name: "site-creator-r2",
+          bucket_name: cf.r2Bucket ?? "site-creator-r2",
         },
       ]
     : [],
