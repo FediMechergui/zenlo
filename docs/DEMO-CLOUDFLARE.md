@@ -21,7 +21,7 @@ Variables de build :
 | `ZENLO_WORKER_NAME` | `zenlo-demo` |
 | `ZENLO_D1_NAME` | `zenlo-demo` |
 | `ZENLO_D1_ID` | identifiant de la base D1 |
-| `ZENLO_R2_BUCKET` | `zenlo-demo` |
+| `ZENLO_R2_BUCKET` | `zenlo-demo`, ou `none` (sans stockage : envois de photos et pièces désactivés) |
 | `ZENLO_DEMO_MODE` | `1` |
 | `NODE_VERSION` | `22` |
 

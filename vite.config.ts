@@ -41,7 +41,9 @@ const localBindingConfig = {
         },
       ]
     : [],
-  r2_buckets: r2
+  // ZENLO_R2_BUCKET=none deploys without object storage: uploads then answer
+  // STORAGE_UNAVAILABLE (every route guards env.BUCKET).
+  r2_buckets: r2 && cf.r2Bucket !== "none"
     ? [
         {
           binding: r2,
